@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -75,6 +75,9 @@ const (
 	UpgradeWithServer           = "upgrade_with_server"
 	XtradbCluster               = "xtradbCluster"
 	XtradbClusterNoSlaveUpdates = "xtradbCluster_no_slave_updates"
+	XtradbClusterEncryptCluster = "xtradbCluster_encrypt_cluster"
+	XtradbClusterRsync          = "xtradb_cluster_rsync"
+	XtradbClusterXtrabackup     = "xtradb_cluster_xtrabackup"
 	NdbCluster                  = "ndbCluster"
 	RootAuth                    = "rootAuth"
 	AdminAddress                = "adminAddress"
@@ -210,6 +213,15 @@ var FlavorCompositionList = []flavorIndicator{
 	{
 		AllNeeded: true,
 		elements: []elementPath{
+			{"bin", globals.FnGarbd},
+			{"lib", globals.FnLibGaleraSmmSo},
+			{"lib", globals.FnLibMySQLClientA},
+		},
+		flavor: PxcFlavor,
+	},
+	{
+		AllNeeded: true,
+		elements: []elementPath{
 			{"bin", globals.FnNdbd},
 			{"bin", globals.FnNdbdMgm},
 			{"bin", globals.FnNdbdMgmd},
@@ -281,10 +293,18 @@ var NdbCapabilities = Capabilities{
 	Flavor:      NdbFlavor,
 	Description: "MySQL NDB Cluster",
 	Features: FeatureList{
-		CreateUser:    MySQLCapabilities.Features[CreateUser],
-		DataDict:      MySQLCapabilities.Features[DataDict],
-		DynVariables:  MySQLCapabilities.Features[DynVariables],
-		Initialize:    MySQLCapabilities.Features[Initialize],
+		CreateUser:   MySQLCapabilities.Features[CreateUser],
+		DataDict:     MySQLCapabilities.Features[DataDict],
+		DynVariables: MySQLCapabilities.Features[DynVariables],
+		InstallDb: {
+			Description: "uses mysql_install_db",
+			Since:       globals.MinimumNdbInstallDb,
+			Until:       globals.MaximumNdbInstallDb,
+		},
+		Initialize: {
+			Description: "uses mysqld initialize",
+			Since:       globals.MinimumNdbInitialize,
+		},
 		MySQLXDefault: MySQLCapabilities.Features[MySQLXDefault],
 		Roles:         MySQLCapabilities.Features[Roles],
 		SetPersist:    MySQLCapabilities.Features[SetPersist],
@@ -301,12 +321,25 @@ var PxcCapabilities = Capabilities{
 	Features: addCapabilities(PerconaCapabilities.Features,
 		FeatureList{
 			XtradbCluster: {
-				Description: "Xtradb Cluster creation",
+				Description: "XtraDB Cluster creation",
 				Since:       globals.MinimumXtradbClusterVersion,
 			},
 			XtradbClusterNoSlaveUpdates: {
-				Description: "Xtradb Cluster creation without log_slave_updates",
+				Description: "XtraDB Cluster creation without log_slave_updates",
 				Since:       globals.MinimumXtradbClusterNoSlaveUpdatesVersion,
+			},
+			XtradbClusterEncryptCluster: {
+				Description: "XtraDB Cluster creation with cluster encryption",
+				Since:       globals.MinimumXtradbClusterNoSlaveUpdatesVersion,
+			},
+			XtradbClusterRsync: {
+				Description: "XtraDB Cluster SST method using rsync",
+				Since:       globals.MinimumXtradbClusterRsync,
+				Until:       globals.MaximumXtradbClusterRsync,
+			},
+			XtradbClusterXtrabackup: {
+				Description: "XtraDB Cluster SST method using XtraBackup",
+				Since:       globals.MinimumXtradbClusterXtraBackup,
 			},
 		}),
 }

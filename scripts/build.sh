@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # DBDeployer - The MySQL Sandbox
-# Copyright © 2006-2019 Giuseppe Maxia
+# Copyright © 2006-2020 Giuseppe Maxia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@ target=$1
 version=$2
 
 build_dir=$(dirname $0)
-executable=$(basename $0)
+build_script=$(basename $0)
 cd $build_dir
-executable=$PWD/$executable
+build_script=$PWD/$build_script
 cd ..
 build_dir=$PWD
 
@@ -69,16 +69,7 @@ fi
 
 if [ -z "$version" ]
 then
-    version=$(cat .build/VERSION)
-fi
-
-code_generation=.build/code-generation.go
-version_builder=version
-tarball_builder=tarball
-if [ ! -f $code_generation ]
-then
-    echo "File $code_generation not found - aborting"
-    exit 1
+    version=$(cat common/VERSION)
 fi
 
 if [ -z "$target" ]
@@ -89,25 +80,8 @@ then
     exit 1
 fi
 
-# Checks whether the regular version and the compatible versions are already in the Go source file
-current_version=$(cat .build/VERSION)
-current_compatible_version=$(cat .build/COMPATIBLE_VERSION)
-is_version=$(grep "VersionDef.*$current_version" common/version.go)
-is_comp_version=$(grep "CompatibleVersion.*$current_compatible_version" common/version.go)
-# if either version is missing from the build file, the source file is created again
-if [ -z "$is_version" -o -z "$is_comp_version" ]
-then
-    go run $code_generation $version_builder
-fi
-go run $code_generation $tarball_builder
-if [ "$?" != "0" ]
-then
-    echo "Error while building tarball registry source file"
-    exit 1
-fi
-
 function shrink {
-    executable=$1
+    binary=$1
     if [ -z "$SHRINK_EXECUTABLES" ]
     then
         return
@@ -117,34 +91,54 @@ function shrink {
     then
         return
     fi
-    upx -9 $executable
+    upx -9 $binary
+}
+
+function make_signature {
+    binary_file=$1
+    sha_sum_cmd=$(find_in_path shasum)
+    if [ -z "$sha_sum_cmd" ]
+    then
+        echo "shasum not found - signature missing"
+        return
+    fi
+    $sha_sum_cmd -a 256 $binary_file > ${binary_file}.sha256
+
+    $sha_sum_cmd -a 256 -c ${binary_file}.sha256
 }
 
 case $target in
     all)
-        $executable OSX $version
-        $executable linux $version
+        $build_script OSX $version
+        $build_script linux $version
         ;;
     OSX)
-        executable=dbdeployer-${version}${docs_tag}.osx
-	    (set -x
-        env GOOS=darwin GOARCH=amd64 go build $docs_flags -o $executable .
-        )
+        binary=dbdeployer-${version}${docs_tag}.osx
+        echo "env GOOS=darwin GOARCH=amd64 go build $docs_flags -o $binary ."
+        env GOOS=darwin GOARCH=amd64 go build $docs_flags -o $binary .
         if [ "$?" != "0" ]
         then
-            echo "ERROR during build!"
+            echo "ERROR during OSX build!"
             exit 1
         fi
-        tar -c $executable | gzip -c > ${executable}.tar.gz
-        shrink $executable
+        tar -c $binary | gzip -c > ${binary}.tar.gz
+        shrink $binary
+        make_signature $binary
+        make_signature ${binary}.tar.gz
     ;;
     linux)
-        executable=dbdeployer-${version}${docs_tag}.linux
-        (set -x
-	    env GOOS=linux GOARCH=amd64 go build $docs_flags -o $executable .
-        )
-        tar -c $executable | gzip -c > ${executable}.tar.gz
-        shrink $executable
+        binary=dbdeployer-${version}${docs_tag}.linux
+	    echo "env GOOS=linux GOARCH=amd64 go build $docs_flags -o $binary ."
+	    env GOOS=linux GOARCH=amd64 go build $docs_flags -o $binary .
+        if [ "$?" != "0" ]
+        then
+            echo "ERROR during linux build!"
+            exit 1
+        fi
+        tar -c $binary | gzip -c > ${binary}.tar.gz
+        shrink $binary
+        make_signature $binary
+        make_signature ${binary}.tar.gz
     ;;
     *)
         echo unrecognized target.

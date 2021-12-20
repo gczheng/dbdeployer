@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2021 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,10 +17,16 @@ package downloads
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"path"
 	"regexp"
+	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/araddon/dateparse"
 	"github.com/datacharmer/dbdeployer/common"
 	"github.com/datacharmer/dbdeployer/defaults"
 	"github.com/datacharmer/dbdeployer/globals"
@@ -38,12 +44,117 @@ type TarballDescription struct {
 	Version         string `json:"version"`
 	UpdatedBy       string `json:"updated_by,omitempty"`
 	Notes           string `json:"notes,omitempty"`
+	DateAdded       string `json:"date_added,omitempty"`
+}
+
+type TarballDescriptionByName []TarballDescription
+type TarballDescriptionByDate []TarballDescription
+type TarballDescriptionByVersion []TarballDescription
+type TarballDescriptionByShortVersion []TarballDescription
+
+func (tb TarballDescriptionByDate) Less(i, j int) bool {
+	dateI, errI := dateparse.ParseAny(tb[i].DateAdded)
+	dateJ, errJ := dateparse.ParseAny(tb[j].DateAdded)
+	if errI != nil || errJ != nil {
+		return tb[i].DateAdded < tb[j].DateAdded
+	}
+	return dateI.UnixNano() < dateJ.UnixNano()
+}
+
+func (tb TarballDescriptionByDate) Len() int {
+	return len(tb)
+}
+
+func (tb TarballDescriptionByDate) Swap(i, j int) {
+	tb[i], tb[j] = tb[j], tb[i]
+}
+
+func (tb TarballDescriptionByName) Len() int {
+	return len(tb)
+}
+
+func (tb TarballDescriptionByName) Swap(i, j int) {
+	tb[i], tb[j] = tb[j], tb[i]
+}
+
+func (tb TarballDescriptionByName) Less(i, j int) bool {
+	return tb[i].Name < tb[j].Name
+}
+
+func (tb TarballDescriptionByVersion) Len() int {
+	return len(tb)
+}
+
+func (tb TarballDescriptionByVersion) Swap(i, j int) {
+	tb[i], tb[j] = tb[j], tb[i]
+
+}
+func (tb TarballDescriptionByVersion) Less(i, j int) bool {
+	iVersionList, _ := common.VersionToList(tb[i].Version)
+	jVersionList, _ := common.VersionToList(tb[j].Version)
+	greater, _ := common.GreaterOrEqualVersionList(iVersionList, jVersionList)
+	return !greater
+}
+
+func (tb TarballDescriptionByShortVersion) Len() int {
+	return len(tb)
+}
+
+func (tb TarballDescriptionByShortVersion) Swap(i, j int) {
+	tb[i], tb[j] = tb[j], tb[i]
+
+}
+
+func (tb TarballDescriptionByShortVersion) Less(i, j int) bool {
+	iVersionList, _ := common.VersionToList(tb[i].ShortVersion)
+	jVersionList, _ := common.VersionToList(tb[j].ShortVersion)
+	greater, _ := common.GreaterOrEqualVersionList(iVersionList, jVersionList)
+	return !greater
 }
 
 type TarballCollection struct {
 	DbdeployerVersion string
 	UpdatedOn         string `json:"updated_on,omitempty"`
 	Tarballs          []TarballDescription
+}
+
+func SortedTarballList(tbl []TarballDescription, ByField string) []TarballDescription {
+	switch ByField {
+	case "version":
+		sort.Stable(TarballDescriptionByVersion(tbl))
+	case "short":
+		sort.Stable(TarballDescriptionByShortVersion(tbl))
+	case "date":
+		sort.Stable(TarballDescriptionByDate(tbl))
+	case "name":
+		sort.Stable(TarballDescriptionByName(tbl))
+	default:
+		sort.Stable(TarballDescriptionByName(tbl))
+	}
+	return tbl
+}
+
+func TarballTree(tbl []TarballDescription) map[string][]TarballDescription {
+	tbl = SortedTarballList(tbl, "short")
+
+	var tarballTree = make(map[string][]TarballDescription)
+	for _, tb := range tbl {
+		_, seen := tarballTree[tb.ShortVersion]
+		if !seen {
+			tarballTree[tb.ShortVersion] = []TarballDescription{}
+		}
+		tarballTree[tb.ShortVersion] = append(tarballTree[tb.ShortVersion], tb)
+	}
+	return tarballTree
+}
+
+func FindTarballByUrl(tarballUrl string) (TarballDescription, error) {
+	for _, tb := range DefaultTarballRegistry.Tarballs {
+		if tb.Url == tarballUrl {
+			return tb, nil
+		}
+	}
+	return TarballDescription{}, fmt.Errorf("tarball with Url %s not found", tarballUrl)
 }
 
 func FindTarballByName(tarballName string) (TarballDescription, error) {
@@ -54,9 +165,23 @@ func FindTarballByName(tarballName string) (TarballDescription, error) {
 	}
 	return TarballDescription{}, fmt.Errorf("tarball with name %s not found", tarballName)
 }
+func DeleteTarball(tarballName string) ([]TarballDescription, error) {
+	var newList []TarballDescription
+	found := false
+	for _, tb := range DefaultTarballRegistry.Tarballs {
+		if tb.Name == tarballName {
+			found = true
+		} else {
+			newList = append(newList, tb)
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("tarball %s not found", tarballName)
+	}
+	return newList, nil
+}
 
 func CompareTarballChecksum(tarball TarballDescription, fileName string) error {
-
 	if tarball.Checksum == "" {
 		return nil
 	}
@@ -101,7 +226,7 @@ func FindOrGuessTarballByVersionFlavorOS(version, flavor, OS string, minimal, ne
 		minimal = false
 	}
 	var tbd []TarballDescription
-	var newestVersionList = []int{0, 0, 0}
+	newestVersionList := []int{0, 0, 0}
 	for _, tb := range DefaultTarballRegistry.Tarballs {
 		if (tb.Version == version || tb.ShortVersion == version) &&
 			strings.ToLower(tb.Flavor) == flavor &&
@@ -109,16 +234,8 @@ func FindOrGuessTarballByVersionFlavorOS(version, flavor, OS string, minimal, ne
 			(!minimal || minimal == tb.Minimal) {
 
 			if guess {
-				_, ok := DownloadUrlList[tb.ShortVersion]
-				if !ok {
-					guess = false
-					allowedVersions := make([]string, len(DownloadUrlList))
-					i := 0
-					for k := range DownloadUrlList {
-						allowedVersions[i] = k
-						i++
-					}
-					return TarballDescription{}, fmt.Errorf("can only guess versions %s ", allowedVersions)
+				if !isAllowedForGuessing(tb.ShortVersion) {
+					return TarballDescription{}, fmt.Errorf("can only guess versions %s ", allowedGuessVersions)
 				}
 			}
 			tbd = append(tbd, tb)
@@ -152,13 +269,25 @@ func FindOrGuessTarballByVersionFlavorOS(version, flavor, OS string, minimal, ne
 		if OS == "linux" && shortVersion == "8.0" {
 			ext = "tar.xz"
 		}
-		data := common.StringMap{"Version": newVersion, "Ext": ext}
+		minimalData := ""
 
-		name, err := common.SafeTemplateFill("", FileNameTemplates[OS], data)
+		if minimal {
+			minimalData = "-minimal"
+		}
+		data := common.StringMap{"Version": newVersion, "Ext": ext, "Minimal": minimalData}
+
+		fileNameTemplate := ""
+		switch OS {
+		case "linux":
+			fileNameTemplate = defaults.Defaults().DownloadNameLinux
+		case "darwin":
+			fileNameTemplate = defaults.Defaults().DownloadNameMacOs
+		}
+		name, err := common.SafeTemplateFill("", fileNameTemplate, data)
 		if err != nil {
 			return TarballDescription{}, fmt.Errorf("[guess version] error filling new download name %s", err)
 		}
-		downloadUrl := fmt.Sprintf("%s/%s", DownloadUrlList[shortVersion], name)
+		downloadUrl := fmt.Sprintf("%s-%s/%s", defaults.Defaults().DownloadUrl, shortVersion, name)
 		tbd = append(tbd, TarballDescription{
 			Name:            name,
 			Checksum:        "",
@@ -255,7 +384,6 @@ func ReadTarballFileInfo() (collection TarballCollection, err error) {
 }
 
 func LoadTarballFileInfo() error {
-
 	collection, err := ReadTarballFileInfo()
 	if err != nil {
 		return err
@@ -268,8 +396,23 @@ func LoadTarballFileInfo() error {
 	return nil
 }
 
+func checkConfigurationDir() error {
+	if !common.DirExists(defaults.ConfigurationDir) {
+		return os.Mkdir(defaults.ConfigurationDir, globals.PublicDirectoryAttr)
+	}
+	return nil
+}
+
 func WriteTarballFileInfo(collection TarballCollection) error {
+	err := CheckTarballList(collection.Tarballs)
+	if err != nil {
+		return fmt.Errorf("[write tarball file info] tarball list check failed : %s", err)
+	}
 	text, err := json.MarshalIndent(collection, " ", " ")
+	if err != nil {
+		return err
+	}
+	err = checkConfigurationDir()
 	if err != nil {
 		return err
 	}
@@ -313,6 +456,83 @@ func TarballFileInfoValidation(collection TarballCollection) error {
 			return fmt.Errorf("%v", tarballErrorList)
 		}
 		return fmt.Errorf("validation errors\n%s", string(errorBytes))
+	}
+	return nil
+}
+
+func GetTarballInfo(fileName string, description TarballDescription) (TarballDescription, error) {
+	crc, err := common.GetFileSha512(fileName)
+	if err != nil {
+		return TarballDescription{}, err
+	}
+	description.Checksum = fmt.Sprintf("SHA512:%s", crc)
+	stat, err := os.Stat(fileName)
+	if err != nil {
+		return TarballDescription{}, err
+	}
+	description.Size = stat.Size()
+
+	flavor, version, shortVersion, err := common.FindTarballInfo(fileName)
+	if err != nil {
+		return TarballDescription{}, err
+	}
+	if description.Version == "" {
+		description.Version = version
+	}
+	if description.ShortVersion == "" {
+		description.ShortVersion = shortVersion
+	}
+	if description.Flavor == "" {
+		description.Flavor = flavor
+	}
+	if description.OperatingSystem == "" {
+		description.OperatingSystem = strings.Title(runtime.GOOS)
+	}
+	description.Name = common.BaseName(fileName)
+
+	return description, nil
+}
+
+func checkRemoteUrl(remoteUrl string) (int64, error) {
+	// #nosec G107
+	resp, err := http.Get(remoteUrl)
+	if err != nil {
+		return 0, fmt.Errorf("[checkRemoteUrl] error getting %s: %s", remoteUrl, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("[checkRemoteUrl] received code %d ", resp.StatusCode)
+	}
+	var size int64 = 0
+	for key := range resp.Header {
+		if key == "Content-Length" && len(resp.Header[key]) > 0 {
+			size, _ = strconv.ParseInt(resp.Header[key][0], 10, 0)
+		}
+	}
+	return size, nil
+}
+
+func CheckTarballList(tarballList []TarballDescription) error {
+	uniqueNames := make(map[string]bool)
+	uniqueCombinations := make(map[string]bool)
+	for _, tb := range tarballList {
+		key := fmt.Sprintf("%s-%s-%s-%v", tb.OperatingSystem, tb.Flavor, tb.Version, tb.Minimal)
+
+		// Makes sure that we don't have duplicate names in the list
+		_, seen := uniqueNames[tb.Name]
+		if seen {
+			return fmt.Errorf("tarball name %s listed more than once", tb.Name)
+		}
+		uniqueNames[tb.Name] = true
+
+		// Makes sure that we don't have duplicate combinations of OS+Flavor+Version+Minimal in the list
+		_, seen = uniqueCombinations[key]
+		if seen {
+			return fmt.Errorf("tarball with OS %s, flavor %s, version %s, and minimal %v listed more than once",
+				tb.OperatingSystem, tb.Flavor, tb.Version, tb.Minimal)
+		}
+		uniqueCombinations[key] = true
 	}
 	return nil
 }

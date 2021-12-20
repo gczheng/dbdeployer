@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build docs
 // +build docs
 
 package cmd
@@ -21,10 +22,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/datacharmer/dbdeployer/common"
-	"github.com/datacharmer/dbdeployer/globals"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+
+	"github.com/datacharmer/dbdeployer/common"
+	"github.com/datacharmer/dbdeployer/globals"
 )
 
 func writeApi(showHidden bool) {
@@ -61,15 +63,14 @@ func writeManPages() {
 }
 
 func writeMarkdownPages() {
-	md_dir := "markdown_pages"
-	if common.DirExists(md_dir) {
-		common.Exitf(1, globals.ErrNamedDirectoryAlreadyExists, "Markdown pages", md_dir)
+	mdDir := "markdown_pages"
+	if common.DirExists(mdDir) {
+		common.Exitf(1, globals.ErrNamedDirectoryAlreadyExists, "Markdown pages", mdDir)
 	}
-	common.Mkdir(md_dir)
-	err := doc.GenMarkdownTree(rootCmd, md_dir)
+	common.Mkdir(mdDir)
+	err := doc.GenMarkdownTree(rootCmd, mdDir)
 	common.ErrCheckExitf(err, 1, "%s", err)
-	err = doc.GenReSTTree(rootCmd, md_dir)
-	common.CondPrintf("Markdown pages generated in '%s'\n", md_dir)
+	common.CondPrintf("Markdown pages generated in '%s'\n", mdDir)
 }
 
 func writeRstPages() {

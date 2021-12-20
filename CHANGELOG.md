@@ -1,16 +1,352 @@
-## 1.43.1	22-Dec-2019 
+## 1.64.0	27-Nov-2021
+
+## NEW FEATURES
+
+* Add downloads for MySQL 8.0.27
+* Add downloads for MySQL 8.0.23 (Issue #144)
+
+## ADJUSTMENTS
+
+* Removed CRC from sample databases provided by MySQL.com: the CRC are not reliable, as they change often.
+
+### Code improvements
+
+* Fixed staticcheck warnings
+
+## 1.63.1	10-Oct-2021
 
 ## BUGS FIXED
+
+* Fix Issue #140 - Wrong command suggestion
+
+## 1.63.0	12-Sep-2021
+
+## BUGS FIXED
+
+* Fix Issue #137: missing check on .dbdeployer dir when no sandboxes were created
+
+## ADJUSTMENTS
+
+* Fix Issue #138 : Update data load URLs and CRCs
+
+### Code improvements
+
+* Update build directives to work with go 1.17
+
+## NEW FEATURES
+
+* Add downloads for MySQL 8.0.26
+
+## 1.62.0	06-Jun-2021
+
+## NEW FEATURES
+
+* Add command `downloads tree` (shows tarballs by version)
+* Add option `--sort-by` to `downloads list`
+
+## DEPRECATION
+
+* Deprecated support for TiDB database. There is no interest in this flavor, and the TiDB community has developed its
+  own tool to achieve the same goal.
+
+## 1.61.0	17-May-2021
+
+## NEW FEATURES
+
+* Command `downloads get` can also use direct URL instead of tarball names
+* Add (hidden) command `downloads add-stdin`
+* Add command `downloads add-remote`
+* Add option `--version` to `downloads list`
+
+## 1.60.0	01-May-2021
+
+## NEW FEATURES
+
+* (@lefred) Add MySQL 8.0.24 binaries to downloads
+* (@lefred) Add `./scripts/get_dbdeployer_mysql_json.sh`
+
+## BUGS FIXED
+
+*  (@ogrovlen) [Allow other custom mysqld than mysqld-debug](https://github.com/datacharmer/dbdeployer/pull/135)
+
+## 1.59.0	27-Feb-2021
+
+### Code improvements
+
+* Replace internal template variables with external files (required Go 1.16)
+* Remove `_template` suffix from most template names
+
+
+### BUGS FIXED
+
+* Fix deletion of specified sandbox when there is only one. Sandbox name was not checked
+
+## 1.58.2	16-Dec-2020
+
+### BUGS FIXED
+
+* Prevent arbitrary symlinks from being extracted with tarballs
+
+## 1.58.1	15-Dec-2020
+
+### BUGS FIXED
+
+* Fix Issue #124 (Can't reset defaults after an upgrade)
+
+## 1.58.0	12-Dec-2020
+
+### NEW FEATURES
+
+* Add script `wipe_and_restart` to single sandboxes
+* Add scripts `exec_all`, `exec_all_masters`, `exec_all_slaves`, `wipe_and_restart_all` to replication sandboxes
+* Add subcommand `exec` to command `global`.
+
+## 1.57.0	09-Dec-2020
+
+### NEW FEATURES
+
+* Add subcommands `import`, `export`, and `reset` to command `data-load`
+
+## 1.56.0	02-Nov-2020
+
+### NEW FEATURES
+
+* Add options `--ls` and `--run` to command `use`
+* Add scripts `sysbench` and `sysbench_ready` to all sandboxes
+* Add command `data-load` with subcommands `list`, `show`, `get`
+
+### BUGS FIXED
+
+* Fix Issue #120 (Can't SELECT the mysql.user table in mariadb 10.4 or later)
+
+## 1.55.0	10-Oct-2020
+
+### NEW FEATURES
+
+* Add second optional argument to `dbdeployer use` to indicate the executable to run within the sandbox.
+
+## 1.54.1	27-Sep-2020
+
+### BUGS FIXED
+
+* Fix Issue #118 (dbdeployer fails to autodetect pxc flavor from binaries of 5.6.x versions)
+
+## 1.54.0	13-Sep-2020
+
+### NEW FEATURES
+
+* The `send_kill` script accepts an argument `destroy` (aliases `-9` or `crash`) 
+  to halt the server immediately.
+* The `delete` command is much faster (uses `send_kill destroy`)
+
+### BUGS FIXED
+
+* The `use` command should re-start a sandbox that was stopped, but it was not doing it (Issue #116)
+* Listing of small tarball for 8.0.21 lacked the 'minimal' attribute
+
+### NOTES
+
+* Added MySQL shell 8.0.21 to downloads list
+
+### TESTING
+
+* Improve `all_tests`: Now it doesn't require the version
+* Improve unit test script to detect where to run
+
+
+## 1.53.3	29-Aug-2020
+
+### BUGS FIXED
+
+* Fixed issue #115: failing to detect missing `socat` for PXC
+
+## 1.53.2	07-Aug-2020
+
+### BUGS FIXED
+
+* Fixed bug during `init`. When the sandbox-binary directory existed, but empty,
+  the download was skipped.
+* `dbdeployer downloads export` would not export the field `date_added`. Such field was
+   lost during build, due to a missed field in `code-generation.go`
+
+### NOTES
+
+* Added MySQL 5.7.31 to downloads list
+
+### TESTING
+
+* Added test for `dbdeployer init` under Docker containers for Ubuntu 18, Ubuntu 20, CentOS 7, CentOS 8
+
+
+## 1.53.1	26-Jul-2020
+
+### BUGS FIXED
+
+* Fix bash completion for CentOS (missing completion script and unchecked `sudo` call)
+
+## 1.53.0	26-Jul-2020
+
+### NEW FEATURES
+
+* Add command 'use' and sandboxes options
+* Add options `--by-date`, `--by-flavor`, `--by-version`, `--newest`, `--oldest` to command `sandboxes`
+
+### NOTES
+
+* Add latest MySQL tarballs to downloads list
+* Add Percona Server minimal to downloads list
+
+### BUGS FIXED
+
+* Fix issue #111 - allows using NDB 7.4/7.5
+
+
+## 1.52.0	28-Jun-2020
+
+### NEW FEATURES
+
+* Add  command `init` that initializes dbdeployer environment
+    * creates `$SANDBOX_HOME` and `$SANDBOX_BINARY` directories
+    * downloads and expands the latest MySQL tarball
+    * installs shell completion file
+
+## 1.51.2	15-Jun-2020
+
+### BUGS FIXED
+
+* Fix error handling on default directories detection for bash completion.
+
+## 1.51.1	14-Jun-2020
+
+### BUGS FIXED
+
+* Fix bug in defaults handling: "default-sandbox-executable" was not used in `info defaults`
+* Prevent `ldd` from running on mocked binaries
+
+### TESTING
+
+* Moved mock tests under docker to improve consistency
+
+
+## 1.51.0	12-Jun-2020
+
+### NEW FEATURES
+
+* Add default sandbox (commands `admin set-default` and `admin remove-default`)
+
+## 1.50.2	07-Jun-2020
+
+### BUGS FIXED
+
+* Fix incorrect privileges when updating dbdeployer as root
+
+## 1.50.1	06-Jun-2020
+
+### BUGS FIXED
+
+* Fix Issue #108: panic error when sandbox binary is not a directory
+
+## 1.50.0	16-May-2020
+
+### NEW FEATURES
+
+* Add new options `--raw` and `--stats` to  command `info releases`
+* Add checksum files (SHA256) to release
+* Add signature check during dbdeployer update
+
+
+## 1.49.0	26-Apr-2020
+
+### NEW FEATURES
+
+* Add `--change-master-options` (Issue #107)
+* Add more downloads (8.0.20, 5.7.30)
+
+### TESTING
+
+* Add more tests
+* Docker test now downloads latest 8.0 binaries instead of using built-in.
+
+## 1.48.0	10-Apr-2020 (not released)
+
+* Improve PXC handling of defaults across versions
+* Fix defaults for PXC 5.6, which were broken after introducing support for PXC8.0 (Issue #106)
+
+
+## 1.47.0	29-Mar-2020
+
+### ADJUSTMENTS
+
+* Add `pxc_encrypt_cluster_traffic` option to PXC options file
+  to adjust to recent default changes and allow PXC 8.0.18 to work
+  out of the box
+
+### Code improvements
+
+* Change all explicit `bash` paths in shell scripts to `env bash`
+
+## 1.46.0	08-Mar-2020
+
+### NEW FEATURES
+
+* Add ability to deploy PXC 8.0 without using any options (dbdeployer
+  uses `wsrep_sst_method=rsync` for 5.7 and `wsrep_sst_method=xtrabackup-v2` for 8.0)
+
+## 1.45.0	22-Feb-2020
+
+### NEW FEATURES
+
+* Add option `--task-user` and `--task-user-role` to create additional user with custom role.
+* Add cookbook recipe `single-custom-users` (include sample creation of orchestator user)
+
+### Code improvements
+
+* Add security checks with `gosec` scans
+* Update copyright notice
+
+### TESTING
+
+* Add test for cookbook scripts
+
+## 1.44.0	16-Feb-2020
+
+### NEW FEATURES
+
+* Add custom role to 8.0 sandboxes
+* Add role related options: `--default-role`, `--custom-role-name`, `--custom-role-privileges`,
+  `--custom-role-target`, `--custom-role-extra`
+* Add filters to `global` command:
+  `--type`, `--flavor`, `--version`, `--short-version`, `--name`, `--port`, `--port-range`.
+  Each option can also be negated (`--type='!single'`, `--flavor=no-mysql`, `--port='!8019'`)
+* Add verbose and dry-run flags to `global`.
+* Add `metadata_all_template` script to composite sandboxes
+* Add command `downloads add`
+* Add tarballs for 5.7.29, 8.0.19 for MySQL and NDB (Linux and MacOS)
+
+### TESTING
+
+* Add test for tarball integrity and reachability
+
+## 1.43.2	31-Jan-2020 (not released)
+
+### BUGS FIXED
+
+* Fix bug in NDB cluster: the cluster name was not reported correctly
+  in the NDB configuration file
+
+## 1.43.1	22-Dec-2019
+
+### BUGS FIXED
 
 * Fix determination of shell interpreter
 
 ## 1.43.0	10-Nov-2019 
 
-## ADJUSTMENTS
+### ADJUSTMENTS
 * Add 'IF NOT EXISTS' to 'CREATE ROLE', to account to changed
   behavior of NDB server in 8.0.18
 
-## BUGS FIXED
+### BUGS FIXED
 
 * Fix for hanging during library check (Issue #99)
 

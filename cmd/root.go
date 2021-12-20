@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -100,7 +100,9 @@ func checkDefaultsFile() {
 	if err != nil {
 		common.Exitf(1, "error validating shell '%s'", err)
 	}
-	defaults.UpdateDefaults(globals.ShellPathLabel, shellPath, false)
+	if defaults.ValidateDefaults(defaults.Defaults()) {
+		defaults.UpdateDefaults(globals.ShellPathLabel, shellPath, false)
+	}
 	err = sandbox.FillMockTemplates()
 	if err != nil {
 		common.Exitf(1, "error filling mock templates: %s", err)
@@ -113,6 +115,11 @@ func checkDefaultsFile() {
 			fmt.Printf("tarball load from %s failed: %s", downloads.TarballFileRegistry, err)
 			fmt.Println("Tarball list not loaded. Using defaults. Correct the issues listed above before using again.")
 		}
+	}
+	err = downloads.CheckTarballList(downloads.DefaultTarballRegistry.Tarballs)
+	if err != nil {
+		fmt.Printf("tarball list check failed: %s\n", err)
+		os.Exit(1)
 	}
 }
 
@@ -138,7 +145,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&defaults.CustomConfigurationFile, globals.ConfigLabel, defaults.ConfigurationFile, "configuration file")
 	setPflag(rootCmd, globals.SandboxHomeLabel, "", "SANDBOX_HOME", defaults.Defaults().SandboxHome, "Sandbox deployment directory", false)
 	setPflag(rootCmd, globals.SandboxBinaryLabel, "", "SANDBOX_BINARY", defaults.Defaults().SandboxBinary, "Binary repository", false)
-	setPflag(rootCmd, globals.ShellPathLabel, "", "SHELL_PATH", common.Which("bash"), "Which shell to use for generated scripts", false)
+	setPflag(rootCmd, globals.ShellPathLabel, "", "SHELL_PATH", common.Which("bash"), "Path to Bash, used for generated scripts", false)
 	rootCmd.PersistentFlags().BoolP(globals.SkipLibraryCheck, "", false, "Skip check for needed libraries (may cause nasty errors)")
 
 	rootCmd.InitDefaultVersionFlag()

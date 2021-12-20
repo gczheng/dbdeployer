@@ -112,8 +112,8 @@ func CreateAllMastersReplication(sandboxDef SandboxDef, origin string, nodes int
 		sandboxDef.LogFileName = common.ReplaceLiteralHome(fileName)
 	}
 
-	sandboxDef.GtidOptions = SingleTemplates["gtid_options_57"].Contents
-	sandboxDef.ReplCrashSafeOptions = SingleTemplates["repl_crash_safe_options"].Contents
+	sandboxDef.GtidOptions = SingleTemplates[globals.TmplGtidOptions57].Contents
+	sandboxDef.ReplCrashSafeOptions = SingleTemplates[globals.TmplReplCrashSafeOptions].Contents
 	if sandboxDef.DirName == "" {
 		sandboxDef.DirName += defaults.Defaults().AllMastersPrefix + common.VersionToName(origin)
 	}
@@ -181,14 +181,15 @@ func CreateAllMastersReplication(sandboxDef SandboxDef, origin string, nodes int
 	data["RplUser"] = sandboxDef.RplUser
 	data["RplPassword"] = sandboxDef.RplPassword
 	data["NodeLabel"] = defaults.Defaults().NodePrefix
+	data["ChangeMasterExtra"] = setChangeMasterProperties("", sandboxDef.ChangeMasterOptions, logger)
 	logger.Printf("Writing master and slave scripts in %s\n", sandboxDef.SandboxDir)
 	for _, node := range slaveList {
 		data["Node"] = node
-		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("s%d", node), "slave_template", sandboxDir, data, true)
+		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("s%d", node), globals.TmplSlave, sandboxDir, data, true)
 		if err != nil {
 			return err
 		}
-		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("m%d", node), "slave_template", sandboxDir, data, true)
+		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("m%d", node), globals.TmplSlave, sandboxDir, data, true)
 		if err != nil {
 			return err
 		}
@@ -199,6 +200,8 @@ func CreateAllMastersReplication(sandboxDef SandboxDef, origin string, nodes int
 	masterPlural := english.PluralWord(2, masterLabel, "")
 	useAllMasters := "use_all_" + masterPlural
 	useAllSlaves := "use_all_" + slavePlural
+	execAllSlaves := "exec_all_" + slavePlural
+	execAllMasters := "exec_all_" + masterPlural
 
 	sbMulti := ScriptBatch{
 		tc:         ReplicationTemplates,
@@ -206,11 +209,14 @@ func CreateAllMastersReplication(sandboxDef SandboxDef, origin string, nodes int
 		data:       data,
 		sandboxDir: sandboxDir,
 		scripts: []ScriptDef{
-			{globals.ScriptTestReplication, "multi_source_test_template", true},
-			{useAllSlaves, "multi_source_use_slaves_template", true},
-			{useAllMasters, "multi_source_use_masters_template", true},
-			{globals.ScriptCheckMsNodes, "check_multi_source_template", true},
-			{globals.ScriptInitializeMsNodes, "multi_source_template", true},
+			{globals.ScriptTestReplication, globals.TmplMultiSourceTest, true},
+			{useAllSlaves, globals.TmplMultiSourceUseSlaves, true},
+			{useAllMasters, globals.TmplMultiSourceUseMasters, true},
+			{execAllMasters, globals.TmplMultiSourceExecMasters, true},
+			{execAllSlaves, globals.TmplMultiSourceExecSlaves, true},
+			{globals.ScriptCheckMsNodes, globals.TmplCheckMultiSource, true},
+			{globals.ScriptInitializeMsNodes, globals.TmplMultiSource, true},
+			{globals.ScriptWipeRestartAll, globals.TmplWipeAndRestartAll, true},
 		},
 	}
 	err = writeScripts(sbMulti)
@@ -311,8 +317,8 @@ func CreateFanInReplication(sandboxDef SandboxDef, origin string, nodes int, mas
 	if slaveList == "" {
 		slaveList = globals.SlaveListValue
 	}
-	sandboxDef.GtidOptions = SingleTemplates["gtid_options_57"].Contents
-	sandboxDef.ReplCrashSafeOptions = SingleTemplates["repl_crash_safe_options"].Contents
+	sandboxDef.GtidOptions = SingleTemplates[globals.TmplGtidOptions57].Contents
+	sandboxDef.ReplCrashSafeOptions = SingleTemplates[globals.TmplReplCrashSafeOptions].Contents
 	if sandboxDef.DirName == "" {
 		sandboxDef.DirName = defaults.Defaults().FanInPrefix + common.VersionToName(origin)
 	}
@@ -399,11 +405,12 @@ func CreateFanInReplication(sandboxDef SandboxDef, origin string, nodes int, mas
 	data["RplUser"] = sandboxDef.RplUser
 	data["RplPassword"] = sandboxDef.RplPassword
 	data["NodeLabel"] = defaults.Defaults().NodePrefix
+	data["ChangeMasterExtra"] = setChangeMasterProperties("", sandboxDef.ChangeMasterOptions, logger)
 	data["MasterIp"] = masterIp
 	logger.Printf("Writing master and slave scripts in %s\n", sandboxDef.SandboxDir)
 	for _, slave := range slist {
 		data["Node"] = slave
-		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("s%d", slave), "slave_template", sandboxDir, data, true)
+		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("s%d", slave), globals.TmplSlave, sandboxDir, data, true)
 		if err != nil {
 			return err
 		}
@@ -413,22 +420,27 @@ func CreateFanInReplication(sandboxDef SandboxDef, origin string, nodes int, mas
 	masterPlural := english.PluralWord(2, masterLabel, "")
 	useAllMasters := "use_all_" + masterPlural
 	useAllSlaves := "use_all_" + slavePlural
+	execAllSlaves := "exec_all_" + slavePlural
+	execAllMasters := "exec_all_" + masterPlural
 	sbMulti := ScriptBatch{
 		tc:         ReplicationTemplates,
 		logger:     logger,
 		data:       data,
 		sandboxDir: sandboxDir,
 		scripts: []ScriptDef{
-			{globals.ScriptTestReplication, "multi_source_test_template", true},
-			{globals.ScriptCheckMsNodes, "check_multi_source_template", true},
-			{useAllSlaves, "multi_source_use_slaves_template", true},
-			{useAllMasters, "multi_source_use_masters_template", true},
-			{globals.ScriptInitializeMsNodes, "multi_source_template", true},
+			{globals.ScriptTestReplication, globals.TmplMultiSourceTest, true},
+			{globals.ScriptCheckMsNodes, globals.TmplCheckMultiSource, true},
+			{useAllSlaves, globals.TmplMultiSourceUseSlaves, true},
+			{useAllMasters, globals.TmplMultiSourceUseMasters, true},
+			{execAllMasters, globals.TmplMultiSourceExecMasters, true},
+			{execAllSlaves, globals.TmplMultiSourceExecSlaves, true},
+			{globals.ScriptInitializeMsNodes, globals.TmplMultiSource, true},
+			{globals.ScriptWipeRestartAll, globals.TmplWipeAndRestartAll, true},
 		},
 	}
 	for _, master := range mlist {
 		data["Node"] = master
-		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("m%d", master), "slave_template", sandboxDir, data, true)
+		err = writeScript(logger, ReplicationTemplates, fmt.Sprintf("m%d", master), globals.TmplSlave, sandboxDir, data, true)
 		if err != nil {
 			return err
 		}

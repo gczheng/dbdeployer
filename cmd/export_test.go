@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ func TestExportImport(t *testing.T) {
 			subCommandName:      "",
 			expectedName:        "admin",
 			expectedAncestors:   2,
-			expectedSubCommands: 4,
+			expectedSubCommands: 6,
 			expectedArgument:    "",
 		},
 		{
@@ -229,7 +229,7 @@ func TestExportImport(t *testing.T) {
 			subCommandName:      "",
 			expectedName:        "global",
 			expectedAncestors:   2,
-			expectedSubCommands: 7,
+			expectedSubCommands: 9,
 			expectedArgument:    "",
 		},
 		{

@@ -58,13 +58,13 @@ Basedir: $HOME/opt/mysql
 
 To run the test suite, you need to create the dbdeployer executables.
 
-`.build/set_version.sh NEW_VERSION`
+`common/set_version.sh NEW_VERSION`
 
 (Please read the Semantic Versioning section in the README)
 
 If the addition changes the API, you should also change the compatible version
 
-`.build/set_version NEW_VERSION compatible`
+`common/set_version NEW_VERSION compatible`
 
 Then build the  executables:
 
@@ -120,7 +120,7 @@ made up MySQL versions (such as 5.7.99) and make sure that dbdeployer works as e
 ./test/mock/short-versions.sh
 ./test/mock/direct-paths.sh
 ./test/mock/expected_ports.sh
-./test/mock/read-only-replication.sh
+./test/mock/replication-setup.sh
 ```
 
 
@@ -138,58 +138,67 @@ Here is a sample of the results at the end:
 
 ```
 # ----------------------------------------------------------------
-# cookbook                  - tests:   60 - pass:   60 - fail:    0
-# defaults-change           - tests:   81 - pass:   81 - fail:    0
-# direct-paths              - tests: 3096 - pass: 3096 - fail:    0
-# docker-test               - tests: 4878 - pass: 4878 - fail:    0
+# cookbook-test             - tests:   35 - pass:   35 - fail:    0
+# cookbook                  - tests:  136 - pass:  136 - fail:    0
+# defaults-change           - tests:   85 - pass:   85 - fail:    0
+# direct-paths              - tests: 3798 - pass: 3798 - fail:    0
+# docker-test               - tests: 5350 - pass: 5350 - fail:    0
 # expected_ports            - tests:   18 - pass:   18 - fail:    0
-# functional-test           - tests: 4988 - pass: 4988 - fail:    0
-# go-unit-tests             - tests: 1046 - pass: 1046 - fail:    0
-# ndb_test                  - tests:  474 - pass:  474 - fail:    0
+# fanin_test                - tests:  216 - pass:  216 - fail:    0
+# functional-test           - tests: 5460 - pass: 5460 - fail:    0
+# go-unit-tests             - tests: 1366 - pass: 1366 - fail:    0
+# ndb_test                  - tests:  522 - pass:  522 - fail:    0
+# parallel                  - tests:    6 - pass:    6 - fail:    0
 # port-clash                - tests:  180 - pass:  180 - fail:    0
-# pxc_test                  - tests:  148 - pass:  148 - fail:    0
-# read-only-replication     - tests: 3060 - pass: 3060 - fail:    0
+# pxc_test                  - tests:  164 - pass:  164 - fail:    0
+# read-only-replication     - tests: 3348 - pass: 3348 - fail:    0
 # sanity_check              - tests:    0 - pass:    0 - fail:    0
 # short-versions            - tests:   42 - pass:   42 - fail:    0
 # ----------------------------------------------------------------
-sanity_check                   []        - time:    3s (        3s) - exit code: 0
-go-unit-tests                  []        - time:   52s (       52s) - exit code: 0
-functional-test                []        - time: 2152s (   35m:52s) - exit code: 0
-docker-test                    [1.28.2]  - time: 2069s (   34m:29s) - exit code: 0
-defaults-change                []        - time:    6s (        6s) - exit code: 0
+sanity_check                   []        - time:   19s (       19s) - exit code: 0
+go-unit-tests                  []        - time:   88s (    1m:28s) - exit code: 0
+functional-test                []        - time: 2230s (   37m:10s) - exit code: 0
+docker-test                    [1.45.0]  - time: 2294s (   38m:14s) - exit code: 0
+cookbook-test                  []        - time:  990s (   16m:30s) - exit code: 0
+defaults-change                []        - time:    7s (        7s) - exit code: 0
 short-versions                 []        - time:    6s (        6s) - exit code: 0
 direct-paths                   []        - time:   18s (       18s) - exit code: 0
 expected_ports                 []        - time:    2s (        2s) - exit code: 0
 read-only-replication          []        - time:   21s (       21s) - exit code: 0
 ndb_test                       []        - time:    4s (        4s) - exit code: 0
 pxc_test                       []        - time:    1s (        1s) - exit code: 0
-cookbook                       []        - time:    1s (        1s) - exit code: 0
-port-clash                     [sparse]  - time:  141s (    2m:21s) - exit code: 0
+fanin_test                     []        - time:   18s (       18s) - exit code: 0
+cookbook                       []        - time:    2s (        2s) - exit code: 0
+parallel                       []        - time:    9s (        9s) - exit code: 0
+port-clash                     [sparse]  - time:  159s (    2m:39s) - exit code: 0
 # Deployed: 111 sandboxes (1143 total ports) - Changed: 0
 # ----------------------------------------------------------------
-# cookbook                  - tests:   60 - pass:   60 - fail:    0
-# defaults-change           - tests:   81 - pass:   81 - fail:    0
-# direct-paths              - tests: 3096 - pass: 3096 - fail:    0
-# docker-test               - tests: 4878 - pass: 4878 - fail:    0
+# cookbook-test             - tests:   35 - pass:   35 - fail:    0
+# cookbook                  - tests:  136 - pass:  136 - fail:    0
+# defaults-change           - tests:   85 - pass:   85 - fail:    0
+# direct-paths              - tests: 3798 - pass: 3798 - fail:    0
+# docker-test               - tests: 5350 - pass: 5350 - fail:    0
 # expected_ports            - tests:   18 - pass:   18 - fail:    0
-# functional-test           - tests: 4988 - pass: 4988 - fail:    0
-# go-unit-tests             - tests: 1046 - pass: 1046 - fail:    0
-# ndb_test                  - tests:  474 - pass:  474 - fail:    0
+# fanin_test                - tests:  216 - pass:  216 - fail:    0
+# functional-test           - tests: 5460 - pass: 5460 - fail:    0
+# go-unit-tests             - tests: 1366 - pass: 1366 - fail:    0
+# ndb_test                  - tests:  522 - pass:  522 - fail:    0
+# parallel                  - tests:    6 - pass:    6 - fail:    0
 # port-clash                - tests:  180 - pass:  180 - fail:    0
-# pxc_test                  - tests:  148 - pass:  148 - fail:    0
-# read-only-replication     - tests: 3060 - pass: 3060 - fail:    0
+# pxc_test                  - tests:  164 - pass:  164 - fail:    0
+# read-only-replication     - tests: 3348 - pass: 3348 - fail:    0
 # sanity_check              - tests:    0 - pass:    0 - fail:    0
 # short-versions            - tests:   42 - pass:   42 - fail:    0
 # ----------------------------------------------------------------
 # ----------------------------------------------------------------
-# Total tests: 18071
-#       pass : 18071
+# Total tests: 20726
+#       pass : 20726
 #       fail : 0
 # ----------------------------------------------------------------
 OS:  Darwin
-Started: Mon Apr 22 20:49:39 CEST 2019
-Ended  : Mon Apr 22 22:04:16 CEST 2019
-Elapsed: 4477 seconds (1h:14m:37s)
+Started: Sat Feb 22 21:00:23 CET 2020
+Ended  : Sat Feb 22 22:38:13 CET 2020
+Elapsed: 5870 seconds (1h:37m:50s)
 # Exit code: 0
 Runs concurrently: yes
 ```

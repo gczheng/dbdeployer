@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,9 +24,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/araddon/dateparse"
 	"github.com/pkg/errors"
 
 	"github.com/datacharmer/dbdeployer/globals"
@@ -46,6 +48,60 @@ type VersionInfo struct {
 var portDebug bool = IsEnvSet("PORT_DEBUG")
 
 type PortMap map[int]bool
+
+type SandboxInfoList []SandboxInfo
+
+func GetFullSandboxInfo(sandboxHome string) SandboxInfoList {
+	var fullSandboxList SandboxInfoList
+	simpleSandboxList, err := GetInstalledSandboxes(sandboxHome)
+	if err != nil {
+		return fullSandboxList
+	}
+
+	for _, sb := range simpleSandboxList {
+		sbDescription := path.Join(sandboxHome, sb.SandboxName, globals.SandboxDescriptionName)
+		var tempSandboxDesc SandboxDescription
+		if FileExists(sbDescription) {
+			tempSandboxDesc, _ = ReadSandboxDescription(path.Join(sandboxHome, sb.SandboxName))
+		}
+
+		fullSandboxList = append(fullSandboxList,
+			SandboxInfo{SandboxName: sb.SandboxName, SandboxDesc: tempSandboxDesc, Locked: sb.Locked})
+	}
+	return fullSandboxList
+}
+
+func GetSandboxesByDate(sandboxHome string) (SandboxInfoList, error) {
+	sandboxList := GetFullSandboxInfo(sandboxHome)
+	if len(sandboxList) == 0 {
+		return sandboxList, nil
+	}
+	var errors = make(map[string]int)
+	sort.SliceStable(sandboxList, func(i, j int) bool {
+		iDate, err := dateparse.ParseStrict(sandboxList[i].SandboxDesc.Timestamp)
+		if err != nil {
+			if _, ok := errors[sandboxList[i].SandboxDesc.Timestamp]; !ok {
+				errors[sandboxList[i].SandboxDesc.Timestamp] = 0
+			}
+			errors[sandboxList[i].SandboxDesc.Timestamp] += 1
+			return false
+		}
+		jDate, err := dateparse.ParseStrict(sandboxList[j].SandboxDesc.Timestamp)
+		if err != nil {
+			if _, ok := errors[sandboxList[j].SandboxDesc.Timestamp]; !ok {
+				errors[sandboxList[j].SandboxDesc.Timestamp] = 0
+			}
+			errors[sandboxList[j].SandboxDesc.Timestamp] += 1
+			return false
+		}
+		return iDate.UnixNano() < jDate.UnixNano()
+	})
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("errors during date conversions %v", errors)
+	}
+
+	return sandboxList, nil
+}
 
 // Returns a list of inner sandboxes
 func SandboxInfoToFileNames(sbList []SandboxInfo) (fileNames []string) {
@@ -172,8 +228,76 @@ func GetAvailableVersions() ([]string, error) {
 	return GetVersionsFromDir(basedir)
 }
 
+// FindSandbox will find a wanted sandbox from a list of sandboxes
+// It will get the sandbox by name, if it matches.
+// If not, it will try to match by version, port, type, or flavor, provided
+// that the wanted parameter is unique among the sandboxes.
+// For example, if we ask for version 8.0.19 and only one sandbox uses such
+// version, we return a match. If two or more sandboxes use that version,
+// there is no match. The same applies for the other criteria.
+//
+// FOR FUTURE USAGE with `dbdeployer delete` or `dbdeployer run sandboxIdentifier`
+func FindSandbox(sandboxList []SandboxInfo, wanted string) (SandboxInfo, error) {
+
+	type match struct {
+		occurrences int
+		info        SandboxInfo
+	}
+	var versions = make(map[string]match)
+	var flavors = make(map[string]match)
+	var types = make(map[string]match)
+	var ports = make(map[string]match)
+	var setMatch = func(input map[string]match, s string, sb SandboxInfo) {
+		item, ok := input[s]
+		if ok {
+			item.occurrences++
+			item.info = SandboxInfo{}
+		} else {
+			item.occurrences = 1
+			item.info = sb
+		}
+		input[s] = item
+	}
+	for _, sb := range sandboxList {
+		if sb.SandboxName == wanted {
+			return sb, nil
+		}
+
+		setMatch(versions, sb.SandboxDesc.Version, sb)
+
+		setMatch(flavors, sb.SandboxDesc.Flavor, sb)
+
+		setMatch(types, sb.SandboxDesc.SBType, sb)
+
+		for _, port := range sb.SandboxDesc.Port {
+			portStr := fmt.Sprintf("%d", port)
+			setMatch(ports, portStr, sb)
+		}
+	}
+
+	var checkMatch = func(input map[string]match) (SandboxInfo, bool) {
+		for k, v := range input {
+			if k == wanted && v.occurrences == 1 && v.info.SandboxName != "" {
+				return v.info, true
+			}
+		}
+		return SandboxInfo{}, false
+	}
+
+	allInput := []map[string]match{flavors, versions, types, ports}
+
+	for _, input := range allInput {
+		sb, found := checkMatch(input)
+		if found {
+			return sb, nil
+		}
+	}
+
+	return SandboxInfo{}, fmt.Errorf("sandbox '%s' not found", wanted)
+}
+
 // Gets a list of installed sandboxes from the $SANDBOX_HOME directory
-func GetInstalledSandboxes(sandboxHome string) (installedSandboxes []SandboxInfo, err error) {
+func GetInstalledSandboxes(sandboxHome string) (installedSandboxes SandboxInfoList, err error) {
 	if !DirExists(sandboxHome) {
 		return installedSandboxes, fmt.Errorf("directory SandboxHome not found")
 	}
@@ -194,10 +318,11 @@ func GetInstalledSandboxes(sandboxHome string) (installedSandboxes []SandboxInfo
 			noClear := path.Join(sandboxHome, fname, "no_clear")
 			noClearAll := path.Join(sandboxHome, fname, "no_clear_all")
 			if FileExists(sbdesc) || FileExists(start) || FileExists(startAll) {
+				description, _ := ReadSandboxDescription(path.Join(sandboxHome, fname))
 				if FileExists(noClearAll) || FileExists(noClear) {
-					installedSandboxes = append(installedSandboxes, SandboxInfo{SandboxName: fname, Locked: true})
+					installedSandboxes = append(installedSandboxes, SandboxInfo{SandboxName: fname, Locked: true, SandboxDesc: description})
 				} else {
-					installedSandboxes = append(installedSandboxes, SandboxInfo{SandboxName: fname, Locked: false})
+					installedSandboxes = append(installedSandboxes, SandboxInfo{SandboxName: fname, Locked: false, SandboxDesc: description})
 				}
 			}
 		}
@@ -720,4 +845,54 @@ func getSortedVersion(sandboxBinary, wantedVersion, flavor string, position int)
 	}
 	latestVersion := sortedVersions[position]
 	return latestVersion
+}
+
+func FindTarballInfo(fileName string) (flavor, version, shortVersion string, err error) {
+	baseName := BaseName(fileName)
+	flavor = DetectTarballFlavor(baseName)
+
+	reVersion := regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
+	versionList := reVersion.FindAllStringSubmatch(baseName, -1)
+	if len(versionList) == 0 || len(versionList[0]) < 2 {
+		return "", "", "", fmt.Errorf("error detecting version %v", versionList)
+	}
+
+	version = fmt.Sprintf("%s.%s.%s", versionList[0][1], versionList[0][2], versionList[0][3])
+	shortVersion = fmt.Sprintf("%s.%s", versionList[0][1], versionList[0][2])
+	return
+}
+
+// Tries to detect the database flavor from tarball name
+func DetectTarballFlavor(tarballName string) string {
+	flavor := ""
+	flavorsRegexps := map[string]string{
+		PerconaServerFlavor: `Percona-Server`,
+		MariaDbFlavor:       `mariadb`,
+		NdbFlavor:           `mysql-cluster`,
+		TiDbFlavor:          `tidb`,
+		PxcFlavor:           `Percona-XtraDB-Cluster`,
+		MySQLShellFlavor:    `mysql-shell`,
+		MySQLFlavor:         `mysql`,
+	}
+
+	// Flavors must be evaluated in order, or else
+	// "mysql-cluster" may be detected as "mysql"
+	flavorDetectionList := []string{
+		PerconaServerFlavor,
+		MariaDbFlavor,
+		NdbFlavor,
+		TiDbFlavor,
+		PxcFlavor,
+		MySQLShellFlavor,
+		MySQLFlavor,
+	}
+
+	for _, key := range flavorDetectionList {
+		value := flavorsRegexps[key]
+		re := regexp.MustCompile(value)
+		if re.MatchString(tarballName) {
+			return key
+		}
+	}
+	return flavor
 }

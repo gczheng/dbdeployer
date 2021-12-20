@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # DBDeployer - The MySQL Sandbox
-# Copyright © 2006-2019 Giuseppe Maxia
+# Copyright © 2006-2020 Giuseppe Maxia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,10 +63,12 @@ then
     export skip_group_operations=1
     export skip_dd_operations=1
     export skip_upgrade_operations=1
+    export skip_use_operations=1
     export skip_multi_source_operations=1
     export skip_import_operations=1
     export skip_pxc_operations=1
     export skip_ndb_operations=1
+    export skip_load_data_operations=1
     export no_tests=1
 fi
 
@@ -100,10 +102,12 @@ do
             unset skip_group_operations
             unset skip_dd_operations
             unset skip_upgrade_operations
+            unset skip_use_operations
             unset skip_multi_source_operations
             unset skip_pxc_operations
             unset skip_ndb_operations
             unset skip_import_operations
+            unset skip_load_data_operations
             unset no_tests
             echo "# Enabling all tests"
             ;;
@@ -142,6 +146,11 @@ do
             unset no_tests
             echo "# Enabling upgrade tests"
             ;;
+        use)
+            unset skip_use_operations
+            unset no_tests
+            echo "# Enabling use tests"
+            ;;
         pre)
             unset skip_pre_post_operations
             unset no_tests
@@ -177,6 +186,11 @@ do
             unset no_tests
             echo "# Enabling NDB operations tests"
             ;;
+        data)
+            unset skip_load_data_operations
+            unset no_tests
+            echo "# Enabling load data operations tests"
+            ;;
         *)
             echo "Allowed tests (you can choose more than one):"
             echo "  main     : main deployment methods"
@@ -188,7 +202,9 @@ do
             echo "  group    : group replication operations "
             echo "  dd       : data dictionary operations "
             echo "  upgrade  : upgrade operations "
+            echo "  use      : use operations "
             echo "  import   : import operations"
+            echo "  data     : load data operations"
             echo "  multi    : multi-source operations (fan-in, all-masters)"
             echo "  pxc      : PXC operations"
             echo "  ndb      : NDB operations"
@@ -236,6 +252,52 @@ then
     echo "Directory (\$SANDBOX_HOME) '$SANDBOX_HOME' could not be created"
     exit 1
 fi
+
+function fetch_latest_version {
+
+    # if it is not running in docker, no need to continue
+    if [ "$(hostname)" != "dbtest" ]
+    then
+        return
+    fi
+    cd /tmp
+    if [ "$?" != "0" ]
+    then
+        return
+    fi
+
+    dbdeployer downloads get-by-version --OS=linux --dry-run 8.0 --minimal --newest > /tmp/buf
+    if [ "$?" != "0" ]
+    then
+        echo "error detecting latest downloadable version"
+        cd -
+        return
+    fi
+    latest_downloadable=$(grep '^Version' /tmp/buf | awk '{print $2}')
+    latest_name=$(grep '^Name' /tmp/buf | awk '{print $2}')
+    rm -f /tmp/buf
+    if [ -z "$latest_downloadable" ]
+    then
+        echo "No latest downloadable version detected"
+        cd -
+        return
+    fi
+    if [ -z "$latest_name" ]
+    then
+        echo "No latest downloadable name detected"
+        cd -
+        return
+    fi
+    latest=$(dbdeployer info version 8.0)
+    if [ "$latest" != "$latest_downloadable"  ]
+    then
+        echo "latest found: $latest"
+        echo "downloading $latest_downloadable"
+        dbdeployer downloads get-unpack --delete-after-unpack $latest_name
+        check_exit_code
+    fi
+    cd -
+}
 
 function test_ports {
     running_version=$1
@@ -419,6 +481,11 @@ function test_force_single {
     run dbdeployer deploy single $CUSTOM_OPTIONS $running_version --force
     port_after=$($SANDBOX_HOME/$sandbox_dir/use -BN -e 'show variables like "port"' | awk '{print $2}')
     ok_equal "Port before and after --force redeployment" $port_after $port_before
+    echo "# $dash_line"
+    echo "# test wipe single sandbox $running_version"
+    echo "# $dash_line"
+    run $SANDBOX_HOME/$sandbox_dir/wipe_and_restart
+    ok_equal "Port before and after wipe_and_restart redeployment" $port_after $port_before
     check_for_exit test_force_single
 }
 
@@ -433,6 +500,11 @@ function test_force_replication {
     run dbdeployer deploy $CUSTOM_OPTIONS replication $running_version --force
     port_after=$($SANDBOX_HOME/$sandbox_dir/m -BN -e 'show variables like "port"' | awk '{print $2}')
     ok_equal "Port before and after --force redeployment" $port_after $port_before
+    echo "# $dash_line"
+    echo "# test wipe replication sandbox $running_version"
+    echo "# $dash_line"
+    run $SANDBOX_HOME/$sandbox_dir/wipe_and_restart_all
+    ok_equal "Port before and after wipe_and_restart_all redeployment" $port_after $port_before
     check_for_exit test_force_replication
 }
 
@@ -440,6 +512,9 @@ function test_custom_credentials {
     running_version=$1
     mode=$2
     dir_name=$3
+    major=$(echo $running_version | tr '.' ' ' | awk '{print $1}')
+    minor=$(echo $running_version | tr '.' ' ' | awk '{print $2}')
+    running_short_version="${major}.${minor}"
     version_path=$(echo $running_version| tr '.' '_')
     test_header test_custom_credentials "${mode} $version_path"
     sandbox_dir=$dir_name$version_path
@@ -460,19 +535,31 @@ function test_custom_credentials {
     then
         capture_test run $SANDBOX_HOME/$sandbox_dir/$test_replication
     fi
+    task_options=""
+    if [ "$running_short_version"  == "8.0" ]
+    then
+        task_options="--custom-role-name=R_ADMIN --task-user=task_user --task-user-role=R_ADMIN"
+    fi
     new_db_user=different
     new_db_password=anotherthing
     new_repl_user=different_rpl
     new_repl_password=anotherthing_rpl
     run dbdeployer deploy $mode $running_version \
         --db-user=$new_db_user --db-password=$new_db_password \
-        --force  $CUSTOM_OPTIONS \
+        --force  $CUSTOM_OPTIONS $task_options \
         --rpl-user=$new_repl_user --rpl-password=$new_repl_password
     # This deployment will be re-tested later together with the rest of the sandboxes
     user_found=$(grep $new_db_user $SANDBOX_HOME/$sandbox_dir/$my_cnf) 
     password_found=$(grep $new_db_password $SANDBOX_HOME/$sandbox_dir/$my_cnf) 
     repl_user_found=$(grep $new_repl_user $SANDBOX_HOME/$sandbox_dir/$grants_file) 
     repl_password_found=$(grep $new_repl_password $SANDBOX_HOME/$sandbox_dir/$grants_file) 
+    if [ -n "$task_options" ]
+    then
+        task_user_found=$(grep task_user $SANDBOX_HOME/$sandbox_dir/$grants_file) 
+        task_role_found=$(grep task_user $SANDBOX_HOME/$sandbox_dir/$grants_file | grep R_ADMIN) 
+        ok "task user found" "$task_user_found"
+        ok "task role found" "$task_role_found"
+    fi
     ok "custom user found" "$user_found"
     ok "custom password found" "$password_found"
     ok "custom replication user found" "$repl_user_found"
@@ -481,6 +568,28 @@ function test_custom_credentials {
     check_for_exit test_custom_credentials
 }
  
+function test_role {
+    running_version=$1
+    latest_version=$2
+    if [ "$running_version" != "$latest_version" ]
+    then
+        return
+    fi
+    group_dir_name=$3
+    custom_role=$4
+    version_path=$(echo $running_version| tr '.' '_')
+    test_header test_role "${group_dir_name}${version_path}"
+    sb_path=$SANDBOX_HOME/${group_dir_name}${version_path}
+
+    role_user=$($sb_path/n1 -BNe "select distinct user from mysql.default_roles where DEFAULT_ROLE_USER='$custom_role'")
+    db_user=$($sb_path/n1 -BNe 'select substring_index(user(), "@", 1)')
+    ok "role user found" "$role_user"
+    ok "db user found" "$db_user"
+    ok_equal "db user matches role user" "$db_user" "$role_user"
+
+    check_for_exit test_role
+}
+
 function test_uuid {
     running_version=$1
     group_dir_name=$2
@@ -645,16 +754,18 @@ fi
 [ -z "$group_short_versions" ] && group_short_versions=(5.7 8.0)
 [ -z "$dd_short_versions" ] && dd_short_versions=(8.0)
 [ -z "$semisync_short_versions" ] && semisync_short_versions=(5.5 5.6 5.7 8.0)
-[ -z "$pxc_short_versions" ] && pxc_short_versions=(pxc5.7)
+[ -z "$pxc_short_versions" ] && pxc_short_versions=(pxc5.6 pxc5.7 pxc8.0)
 [ -z "$ndb_short_versions" ] && ndb_short_versions=(ndb7.6 ndb8.0)
 count=0
 all_versions=()
-tidb_versions=(tidb3.0.0)
+tidb_versions=(tidb3.0.0 tidb4.0.0)
 group_versions=()
 semisync_versions=()
 dd_versions=()
 pxc_versions=()
 ndb_versions=()
+
+fetch_latest_version
 
 for v in ${short_versions[*]}
 do
@@ -823,6 +934,28 @@ function main_deployment_methods {
         test_deletion $V 3 $processes_before
     done
 }
+
+function load_data_operations {
+    current_test=load_data_operations
+    test_header load_data_operations "" double
+    processes_before=$(pgrep mysqld | wc -l | tr -d ' \t')
+    for V in ${group_versions[*]}
+    do
+        run dbdeployer deploy single $V
+        run dbdeployer deploy replication $V
+
+        version_path=$(echo $V| tr '.' '_')
+        for archive in world worldx sakila
+        do
+            run dbdeployer data-load get $archive msb_$version_path
+            run dbdeployer data-load get $archive rsandbox_$version_path
+        done
+        echo "# processes $processes_before"
+        test_deletion $V 2 $processes_before
+    done
+}
+
+
 
 function tidb_deployment_methods {
     current_test=tidb_deployment_methods
@@ -1196,6 +1329,84 @@ function custom_replication_methods {
     results "custom replication multi - after deletion"
 }
 
+function use_operations {
+    current_test=use_operations
+    test_header use_operations "" double
+    latest_5_6=$(dbdeployer info version 5.6)
+    latest_5_7=$(dbdeployer info version 5.7)
+    latest_8_0=$(dbdeployer info version 8.0)
+    if [ -z "$latest_5_6" -o -z "$latest_5_7" -o -z "$latest_8_0" ]
+    then
+        echo "Skipping use test. No suitable version found for 5.6, 5.7, or 8.0"
+        return
+    fi
+    echo "# use operations deploy $latest_5_6, $latest_5_7 and $latest_8_0"
+
+    run dbdeployer deploy replication $latest_8_0
+    run dbdeployer deploy single $latest_5_6
+    run dbdeployer deploy single $latest_5_7
+
+    results "use $latest_5_6 $latest_5_7 $latest_8_0"
+    capture_test run dbdeployer global test
+
+    run dbdeployer sandboxes --by-date
+    sandboxes1=$(dbdeployer sandboxes --by-date | head -n 1)
+    found_80=$(echo $sandboxes1 | grep "$latest_8_0")
+    ok "version $latest_8_0 found as oldest sandbox" "$found_80"
+    sb_80_name=$(echo $found_80 | awk '{print $1}')
+
+    sandboxes3=$(dbdeployer sandboxes --by-date | tail -n 1)
+    found_57=$(echo $sandboxes3 | grep "$latest_5_7")
+    ok "version $latest_5_7 found as newest sandbox" "$found_57"
+
+    sandboxes1=$(dbdeployer sandboxes --oldest)
+    found_80=$(echo $sandboxes1 | grep "$latest_8_0")
+    ok "version $latest_8_0 found as --oldest sandbox" "$found_80"
+
+    sandboxes3=$(dbdeployer sandboxes --latest)
+    found_57=$(echo $sandboxes3 | grep "$latest_5_7")
+    ok "version $latest_5_7 found as --latest sandbox" "$found_57"
+
+    sandboxes_by_version1=$(dbdeployer sandboxes --by-version | head -n 1)
+    found_80=$(echo $sandboxes_by_version1 | grep "$latest_8_0")
+    ok "version $latest_8_0 found as first sandbox --by-version" "$found_80"
+
+    sandboxes_by_version3=$(dbdeployer sandboxes --by-version | tail -n 1)
+    found_56=$(echo $sandboxes_by_version3 | grep "$latest_5_6")
+    ok "version $latest_5_6 found as last sandbox --by-version" "$found_56"
+
+
+    found_version=$(echo 'select version()' | dbdeployer use | tail -n 1)
+    ok_equal "version used is $latest_5_7" "$latest_5_7" "$found_version"
+
+    run dbdeployer deploy replication $latest_5_6 --concurrent
+    sandboxes4=$(dbdeployer sandboxes --by-date | tail -n 1)
+    found_56=$(echo $sandboxes4 | grep "$latest_5_6")
+    ok "version $latest_5_6 found as newest sandbox" "$found_56"
+
+    sandboxes4=$(dbdeployer sandboxes --latest)
+    found_56=$(echo $sandboxes4 | grep "$latest_5_6")
+    ok "version $latest_5_6 found as --latest sandbox" "$found_56"
+
+    found_version=$(echo 'select version()' | dbdeployer use | tail -n 1)
+
+    ok_contains "version used is $latest_5_6" "$found_version" "$latest_5_6"
+
+    found_version=$(echo 'select version()' | dbdeployer use  "$sb_80_name" | tail -n 1)
+    found_server_id1=$(echo 'select @@server_id' | dbdeployer use  "$sb_80_name" | tail -n 1)
+    found_server_id2=$(echo 'select @@server_id' | dbdeployer use  "$sb_80_name" s1 | tail -n 1)
+    found_server_id3=$(echo 'select @@server_id' | dbdeployer use  "$sb_80_name" s2 | tail -n 1)
+
+    ok_contains "version used is $latest_8_0" "$found_version" "$latest_8_0"
+    ok_contains "server ID in node 1 is 100 " "$found_server_id1" "100"
+    ok_contains "server ID in node 2 is 200 " "$found_server_id2" "200"
+    ok_contains "server ID in node 3 is 300 " "$found_server_id3" "300"
+
+    dbdeployer delete ALL --skip-confirm
+    results "use $latest_5_6 $latest_5_7 and $latest_8_0 - after deletion"
+}
+
+
 function upgrade_operations {
     current_test=upgrade_operations
     test_header upgrade_operations "" double
@@ -1308,8 +1519,20 @@ function group_operations {
     current_test=group_operations
     test_header group_operations "" double
     processes_before=$(pgrep mysqld | wc -l | tr -d ' \t')
+
+    custom_role=R_GROUP
+    role_options="--custom-role-name=$custom_role --default-role=$custom_role"
+    latest_8_version=$(dbdeployer info version 8.0)
     for V in ${group_versions[*]}
     do
+        search_role=$custom_role
+        extra=""
+        if [ "$V" == "$latest_8_version" ]
+        then
+            extra=$role_options
+        else
+            search_role=R_CUSTOM
+        fi
         echo "# Group operations $V"
         mysqld_debug=$SANDBOX_BINARY/$V/bin/mysqld-debug
         plugin_debug=$SANDBOX_BINARY/$V/lib/plugin/debug
@@ -1319,15 +1542,17 @@ function group_operations {
         else
             WITH_DEBUG=""
         fi
-        run dbdeployer deploy replication $V --topology=group
+        run dbdeployer deploy replication $V --topology=group $extra
         run dbdeployer deploy replication $V --topology=group \
-            --single-primary $WITH_DEBUG
+            --single-primary $WITH_DEBUG $extra
         results "group $V"
 
         capture_test run dbdeployer global test
         capture_test run dbdeployer global test-replication
         test_uuid $V group_msb_ 1
         test_uuid $V group_sp_msb_ 1
+        test_role $V "$latest_8_version" group_msb_ $search_role
+        test_role $V "$latest_8_version" group_sp_msb_ $search_role
         test_use_masters_slaves $V group_msb_ 3 3
         test_use_masters_slaves $V group_sp_msb_ 1 2
         test_ports $V group_msb_ 6 3
@@ -1342,22 +1567,35 @@ function multi_source_operations {
     current_test=multi_source_operations
     test_header multi_source_operations "" double
     processes_before=$(pgrep mysqld | wc -l | tr -d ' \t')
+    custom_role=R_MULTI
+    role_options="--custom-role-name=$custom_role --default-role=$custom_role"
+    latest_8_version=$(dbdeployer info version 8.0)
     for V in ${group_versions[*]}
     do
+        search_role=$custom_role
+        extra=""
+        if [ "$V" == "$latest_8_version" ]
+        then
+            extra=$role_options
+        else
+            search_role=R_CUSTOM
+        fi
         echo "# Multi-source operations $V"
         v_path=$(echo $V| tr '.' '_')
-        run dbdeployer deploy replication $V --topology=fan-in
+        run dbdeployer deploy replication $V --topology=fan-in $extra
         run dbdeployer deploy replication $V --topology=fan-in \
             --sandbox-directory=fan_in_msb2_$v_path \
             --base-port=31000 \
             --nodes=4 \
             --master-list='1,2' \
-            --slave-list='3:4'
-        run dbdeployer deploy replication $V --topology=all-masters
+            --slave-list='3:4' $extra
+        run dbdeployer deploy replication $V --topology=all-masters $extra
         results "multi-source"
 
         capture_test run dbdeployer global test
         capture_test run dbdeployer global test-replication
+        test_role $V "$latest_8_version" fan_in_msb_ $search_role
+        test_role $V "$latest_8_version" all_masters_msb_ $search_role
         test_uuid $V fan_in_msb_ 1
         test_uuid $V all_masters_msb_ 1
         test_ports $V fan_in_msb_ 3 3
@@ -1385,12 +1623,19 @@ function pxc_operations {
         echo "# PXC operations $V"
         run dbdeployer deploy replication $V --topology=pxc
         results "PXC $V"
+        v_path=$(echo pxc_msb_$V| tr '.' '_')
 
         capture_test run dbdeployer global test
         capture_test run dbdeployer global test-replication
         test_use_masters_slaves $V pxc_msb_ 3 3
         test_ports $V pxc_msb_ 12 3
         check_for_exit pxc_operations
+        for cmd in restart_all node1/restart node2/restart node3/restart
+        do
+            run $SANDBOX_HOME/$v_path/$cmd
+            capture_test run dbdeployer global test
+            capture_test run dbdeployer global test-replication
+        done
         test_deletion $V 1 $processes_before
         results "pxc $V - after deletion"
     done
@@ -1421,10 +1666,10 @@ if [ -z "$skip_main_deployment_methods" ]
 then
     main_deployment_methods
 fi
-if [ -z "$skip_tidb_deployment_methods" ]
-then
-    tidb_deployment_methods
-fi
+#if [ -z "$skip_tidb_deployment_methods" ]
+#then
+#    tidb_deployment_methods
+#fi
 if [ -z "$skip_skip_start_deployment" ]
 then
     skip_start_deployment
@@ -1449,6 +1694,10 @@ if [ -z "$skip_upgrade_operations" ]
 then
     upgrade_operations
 fi
+if [ -z "$skip_use_operations" ]
+then
+    use_operations
+fi
 if [ -z "$skip_import_operations" ]
 then
     import_operations
@@ -1464,6 +1713,10 @@ fi
 if [ -z "$skip_ndb_operations" ]
 then
     ndb_operations
+fi
+if [ -z "$skip_load_data_operations" ]
+then
+    load_data_operations
 fi
 if [ -z "$skip_custom_replication_methods" ]
 then

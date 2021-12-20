@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2021 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,7 +31,8 @@ import (
 )
 
 func replaceTemplate(templateName string, fileName string) {
-	group, _, contents := findTemplate(templateName)
+	// Use the canonical name for the template returned by findTemplate
+	group, templateName, contents := findTemplate(templateName)
 	if !common.FileExists(fileName) {
 		common.Exitf(1, globals.ErrFileNotFound, fileName)
 	}
@@ -182,6 +183,13 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 	if err != nil {
 		return sd, err
 	}
+	if !common.DirExists(basedir) {
+		if common.FileExists(basedir) {
+			return sd, fmt.Errorf("the path indicated as SANDBOX_BINARY (%s) is a file, not a directory", basedir)
+		}
+		return sd, fmt.Errorf("sandbox binary directory %s not found\n"+
+			"Use 'dbdeployer init' to initialize it", basedir)
+	}
 	if os.Getenv("SANDBOX_BINARY") == "" {
 		_ = os.Setenv("SANDBOX_BINARY", basedir)
 	}
@@ -244,12 +252,14 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 	}
 
 	sd.Basedir = path.Join(basedir, sd.BasedirName)
-	// sd.Basedir = path.Join(basedir, args[0])
 	if !common.DirExists(sd.Basedir) && !sd.Imported {
 		common.Exitf(1, "basedir '%s' not found", sd.Basedir)
 	}
 
 	skipLibraryCheck, _ := flags.GetBool(globals.SkipLibraryCheck)
+	if os.Getenv("SB_MOCKING") != "" {
+		skipLibraryCheck = true
+	}
 	if !skipLibraryCheck {
 		err = common.CheckLibraries(sd.Basedir)
 		if err != nil {
@@ -274,6 +284,9 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 		return sd, err
 	}
 
+	if sd.SandboxDir == sd.Basedir {
+		return sd, fmt.Errorf("sandbox-binary and sandbox-home cannot be the same directory (%s)", sd.SandboxDir)
+	}
 	err = common.CheckSandboxDir(sd.SandboxDir)
 	if err != nil {
 		return sd, err
@@ -312,6 +325,13 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 	sd.DbUser, _ = flags.GetString(globals.DbUserLabel)
 	sd.DbPassword, _ = flags.GetString(globals.DbPasswordLabel)
 	sd.RplUser, _ = flags.GetString(globals.RplUserLabel)
+	sd.DefaultRole, _ = flags.GetString(globals.DefaultRoleLabel)
+	sd.CustomRoleName, _ = flags.GetString(globals.CustomRoleNameLabel)
+	sd.CustomRolePrivileges, _ = flags.GetString(globals.CustomRolePrivilegesLabel)
+	sd.CustomRoleTarget, _ = flags.GetString(globals.CustomRoleTargetLabel)
+	sd.CustomRoleExtra, _ = flags.GetString(globals.CustomRoleExtraLabel)
+	sd.TaskUser, _ = flags.GetString(globals.TaskUserLabel)
+	sd.TaskUserRole, _ = flags.GetString(globals.TaskUserRoleLabel)
 	sd.Flavor, _ = flags.GetString(globals.FlavorLabel)
 
 	sd.Flavor = getFlavor(sd.Flavor, sd.Basedir)
@@ -324,6 +344,7 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 	sd.CustomMysqld, _ = flags.GetString(globals.CustomMysqldLabel)
 	sd.InitOptions, _ = flags.GetStringArray(globals.InitOptionsLabel)
 	sd.MyCnfOptions, _ = flags.GetStringArray(globals.MyCnfOptionsLabel)
+	sd.ChangeMasterOptions, _ = flags.GetStringArray(globals.ChangeMasterOptions)
 	sd.PreGrantsSqlFile, _ = flags.GetString(globals.PreGrantsSqlFileLabel)
 	sd.PreGrantsSql, _ = flags.GetStringArray(globals.PreGrantsSqlLabel)
 	sd.PostGrantsSql, _ = flags.GetStringArray(globals.PostGrantsSqlLabel)
@@ -355,7 +376,7 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 	gtid, _ = flags.GetBool(globals.GtidLabel)
 	replCrashSafe, _ = flags.GetBool(globals.ReplCrashSafeLabel)
 	if master {
-		sd.ReplOptions = sandbox.SingleTemplates["replication_options"].Contents
+		sd.ReplOptions = sandbox.SingleTemplates[globals.TmplReplicationOptions].Contents
 		if sd.ServerId == 0 {
 			sd.PortAsServerId = true
 		} else {
@@ -363,13 +384,13 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 		}
 	}
 	if gtid {
-		templateName := "gtid_options_56"
+		templateName := globals.TmplGtidOptions56
 		// 5.7.0
 		// isEnhancedGtid, err := common.GreaterOrEqualVersion(sd.Version, globals.MinimumEnhancedGtidVersion)
 		isEnhancedGtid, err := common.HasCapability(sd.Flavor, common.EnhancedGTID, sd.Version)
 		common.ErrCheckExitf(err, 1, globals.ErrWhileComparingVersions)
 		if isEnhancedGtid {
-			templateName = "gtid_options_57"
+			templateName = globals.TmplGtidOptions57
 		}
 		// 5.6.9
 		//isMinimumGtid, err := common.GreaterOrEqualVersion(sd.Version, globals.MinimumGtidVersion)
@@ -377,8 +398,8 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 		common.ErrCheckExitf(err, 1, globals.ErrWhileComparingVersions)
 		if isMinimumGtid {
 			sd.GtidOptions = sandbox.SingleTemplates[templateName].Contents
-			sd.ReplCrashSafeOptions = sandbox.SingleTemplates["repl_crash_safe_options"].Contents
-			sd.ReplOptions = sandbox.SingleTemplates["replication_options"].Contents
+			sd.ReplCrashSafeOptions = sandbox.SingleTemplates[globals.TmplReplCrashSafeOptions].Contents
+			sd.ReplOptions = sandbox.SingleTemplates[globals.TmplReplicationOptions].Contents
 			if sd.ServerId == 0 {
 				sd.PortAsServerId = true
 			} else {
@@ -395,9 +416,22 @@ func fillSandboxDefinition(cmd *cobra.Command, args []string, usingImport bool) 
 		isMinimumCrashSafe, err := common.HasCapability(sd.Flavor, common.CrashSafe, sd.Version)
 		common.ErrCheckExitf(err, 1, globals.ErrWhileComparingVersions)
 		if isMinimumCrashSafe {
-			sd.ReplCrashSafeOptions = sandbox.SingleTemplates["repl_crash_safe_options"].Contents
+			sd.ReplCrashSafeOptions = sandbox.SingleTemplates[globals.TmplReplCrashSafeOptions].Contents
 		} else {
 			common.Exitf(1, globals.ErrOptionRequiresVersion, globals.ReplCrashSafeLabel, common.IntSliceToDottedString(globals.MinimumCrashSafeVersion))
+		}
+	}
+	if flags.Changed(globals.DefaultRoleLabel) ||
+		flags.Changed(globals.CustomRoleNameLabel) ||
+		flags.Changed(globals.CustomRolePrivilegesLabel) ||
+		flags.Changed(globals.TaskUserLabel) ||
+		flags.Changed(globals.TaskUserRoleLabel) ||
+		flags.Changed(globals.CustomRoleTargetLabel) ||
+		flags.Changed(globals.CustomRoleExtraLabel) {
+		isRoleEnabled, err := common.HasCapability(sd.Flavor, common.Roles, sd.Version)
+		common.ErrCheckExitf(err, 1, globals.ErrWhileComparingVersions)
+		if !isRoleEnabled {
+			common.Exitf(1, "options about roles requires version 8.0+")
 		}
 	}
 	return sd, nil

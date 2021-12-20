@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # DBDeployer - The MySQL Sandbox
-# Copyright © 2006-2018 Giuseppe Maxia
+# Copyright © 2006-2020 Giuseppe Maxia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ container_name=dbtest
 #    fi
 #fi
 
-exists=$(docker ps -a | grep $container_name )
+exists=$(docker ps -a | grep -w $container_name )
 if [ -n "$exists" ]
 then
     docker rm -v -f $container_name
@@ -63,8 +63,8 @@ fi
 
 TARGET_DIR=test
 
-# $TRAVIS is defined when the test is running in TRavis environment
-if [ -n "$TRAVIS" ]
+# $GITHUB_ACTIONS is defined when the test is running in Github actions environment
+if [ -n "$GITHUB_ACTIONS" ]
 then
     export RUN_CONCURRENTLY=1
     export EXIT_ON_FAILURE=1
@@ -81,13 +81,15 @@ fi
 
 [ -z "$test_command" ] && test_command="./$TARGET_DIR/functional-test.sh"
 
+interactive="-ti"
 if [ "$test_command" != "bash" ]
 then
+    interactive=""
     test_command="bash -c $test_command"
 fi
 
 (set -x
-  docker run -ti  \
+  docker run $interactive \
     -v $PWD/$executable:/usr/bin/dbdeployer \
     -v $PWD/test:/home/msandbox/$TARGET_DIR \
     --name $container_name \

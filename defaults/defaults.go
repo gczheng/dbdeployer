@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package defaults
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path"
 	"time"
@@ -67,6 +66,10 @@ type DbdeployerDefaults struct {
 	RemoteTarballUrl              string `json:"remote-tarball-url"`
 	PxcPrefix                     string `json:"pxc-prefix"`
 	NdbPrefix                     string `json:"ndb-prefix"`
+	DefaultSandboxExecutable      string `json:"default-sandbox-executable"`
+	DownloadNameLinux             string `json:"download-name-linux"`
+	DownloadNameMacOs             string `json:"download-name-macos"`
+	DownloadUrl                   string `json:"download-url"`
 	Timestamp                     string `json:"timestamp"`
 }
 
@@ -75,6 +78,7 @@ const (
 	maxPortValue            int    = 30000
 	ConfigurationDirName    string = ".dbdeployer"
 	ConfigurationFileName   string = "config.json"
+	ArchivesFileName        string = "archives.json"
 	SandboxRegistryName     string = "sandboxes.json"
 	SandboxRegistryLockName string = "sandboxes.lock"
 )
@@ -83,6 +87,7 @@ var (
 	homeDir                 string = os.Getenv("HOME")
 	ConfigurationDir        string = path.Join(homeDir, ConfigurationDirName)
 	ConfigurationFile       string = path.Join(ConfigurationDir, ConfigurationFileName)
+	ArchivesFile            string = path.Join(ConfigurationDir, ArchivesFileName)
 	CustomConfigurationFile string = ""
 	SandboxRegistry         string = path.Join(ConfigurationDir, SandboxRegistryName)
 	SandboxRegistryLock     string = path.Join(common.GlobalTempDir(), SandboxRegistryLockName)
@@ -122,19 +127,18 @@ var (
 		MultiplePrefix:                "multi_msb_",
 		FanInPrefix:                   "fan_in_msb_",
 		AllMastersPrefix:              "all_masters_msb_",
-		ReservedPorts: []int{
-			1186,  // MySQL Cluster
-			3306,  // MySQL Server regular port
-			33060, // MySQLX
-			33062, // MySQL Server admin port
-		},
-		RemoteRepository:    "https://raw.githubusercontent.com/datacharmer/mysql-docker-minimal/master/dbdata",
-		RemoteIndexFile:     "available.json",
-		RemoteCompletionUrl: "https://raw.githubusercontent.com/datacharmer/dbdeployer/master/docs/dbdeployer_completion.sh",
-		RemoteTarballUrl:    "https://raw.githubusercontent.com/datacharmer/dbdeployer/master/downloads/tarball_list.json",
-		NdbPrefix:           "ndb_msb_",
-		PxcPrefix:           "pxc_msb_",
-		Timestamp:           time.Now().Format(time.UnixDate),
+		ReservedPorts:                 globals.ReservedPorts,
+		RemoteRepository:              "https://raw.githubusercontent.com/datacharmer/mysql-docker-minimal/master/dbdata",
+		RemoteIndexFile:               "available.json",
+		RemoteCompletionUrl:           "https://raw.githubusercontent.com/datacharmer/dbdeployer/master/docs/dbdeployer_completion.sh",
+		RemoteTarballUrl:              "https://raw.githubusercontent.com/datacharmer/dbdeployer/master/downloads/tarball_list.json",
+		NdbPrefix:                     "ndb_msb_",
+		PxcPrefix:                     "pxc_msb_",
+		DefaultSandboxExecutable:      "default",
+		DownloadNameLinux:             "mysql-{{.Version}}-linux-glibc2.17-x86_64{{.Minimal}}.{{.Ext}}",
+		DownloadNameMacOs:             "mysql-{{.Version}}-macos11-x86_64.{{.Ext}}",
+		DownloadUrl:                   "https://dev.mysql.com/get/Downloads/MySQL",
+		Timestamp:                     time.Now().Format(time.UnixDate),
 	}
 	currentDefaults DbdeployerDefaults
 )
@@ -173,7 +177,7 @@ func WriteDefaultsFile(filename string, defaults DbdeployerDefaults) {
 	}
 	b, err := json.MarshalIndent(defaults, " ", "\t")
 	common.ErrCheckExitf(err, 1, globals.ErrEncodingDefaults, err)
-	jsonString := fmt.Sprintf("%s", b)
+	jsonString := string(b)
 	err = common.WriteString(jsonString, filename)
 	common.ErrCheckExitf(err, 1, "error writing defaults file")
 }
@@ -266,6 +270,10 @@ func ValidateDefaults(nd DbdeployerDefaults) bool {
 		nd.MultiplePrefix != "" &&
 		nd.PxcPrefix != "" &&
 		nd.NdbPrefix != "" &&
+		nd.DefaultSandboxExecutable != "" &&
+		nd.DownloadUrl != "" &&
+		nd.DownloadNameLinux != "" &&
+		nd.DownloadNameMacOs != "" &&
 		nd.SandboxHome != "" &&
 		nd.SandboxBinary != "" &&
 		nd.RemoteIndexFile != "" &&
@@ -395,6 +403,14 @@ func UpdateDefaults(label, value string, storeDefaults bool) {
 		newDefaults.PxcPrefix = value
 	case "ndb-prefix":
 		newDefaults.NdbPrefix = value
+	case "default-sandbox-executable":
+		newDefaults.DefaultSandboxExecutable = value
+	case "download-url":
+		newDefaults.DownloadUrl = value
+	case "download-name-linux":
+		newDefaults.DownloadNameLinux = value
+	case "download-name-macos":
+		newDefaults.DownloadNameMacOs = value
 	default:
 		common.Exitf(1, "unrecognized label %s", label)
 	}
@@ -522,6 +538,14 @@ func DefaultsToMap() common.StringMap {
 		"pxc-prefix":                        currentDefaults.PxcPrefix,
 		"NdbPrefix":                         currentDefaults.NdbPrefix,
 		"ndb-prefix":                        currentDefaults.NdbPrefix,
+		"DefaultSandboxExecutable":          currentDefaults.DefaultSandboxExecutable,
+		"default-sandbox-executable":        currentDefaults.DefaultSandboxExecutable,
+		"download-url":                      currentDefaults.DownloadUrl,
+		"DownloadUrl":                       currentDefaults.DownloadUrl,
+		"download-name-macos":               currentDefaults.DownloadNameMacOs,
+		"DownloadNameMacOs":                 currentDefaults.DownloadNameMacOs,
+		"download-name-linux":               currentDefaults.DownloadNameLinux,
+		"DownloadNameLinux":                 currentDefaults.DownloadNameLinux,
 		"Timestamp":                         currentDefaults.Timestamp,
 		"timestamp":                         currentDefaults.Timestamp,
 	}

@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2021 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 	"os/user"
 	"path"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -45,6 +46,7 @@ type SandboxDef struct {
 	BasedirName          string           // The bare name of the directory containing the binaries (e.g. 8.0.11)
 	SandboxDir           string           // Target directory for sandboxes
 	ShellPath            string           // The Bash interpreter to use for generated scripts
+	StartArgs            []string         // Arguments passed to the 'start' command
 	LoadGrants           bool             // Should we load grants?
 	SkipReportHost       bool             // Do not add report-host to my.sandbox.cnf
 	SkipReportPort       bool             // Do not add report-port to my.sandbox.cnf
@@ -61,6 +63,13 @@ type SandboxDef struct {
 	RplUser              string           // Replication user name
 	DbPassword           string           // Database password
 	RplPassword          string           // Replication password
+	DefaultRole          string           // Role assigned to default user
+	CustomRoleName       string           // Custom role name
+	CustomRolePrivileges string           // Custom role privileges (such as 'SELECT, INSERT')
+	CustomRoleTarget     string           // Custom role target (such as 'dbName.*', or '*.*')
+	CustomRoleExtra      string           // Custom role extra (such as 'with grant option')
+	TaskUser             string           // Additional user to be created on demand
+	TaskUserRole         string           // Role to be assigned to task user
 	RemoteAccess         string           // What access have the users created for this SB (127.%)
 	BindAddress          string           // Bind address for this sandbox (127.0.0.1)
 	CustomMysqld         string           // Use an alternative mysqld executable
@@ -73,6 +82,7 @@ type SandboxDef struct {
 	ReadOnlyOptions      string           // Options for read-only passed to child sandboxes
 	InitOptions          []string         // Options to be added to the initialization command
 	MyCnfOptions         []string         // Options to be added to my.sandbox.cnf
+	ChangeMasterOptions  []string         // Options to be added to CHANGE MASTER TO
 	PreGrantsSql         []string         // SQL statements to execute before grants assignment
 	PreGrantsSqlFile     string           // SQL file to load before grants assignment
 	PostGrantsSql        []string         // SQL statements to run after grants assignment
@@ -149,18 +159,18 @@ func sandboxDefToJson(sd SandboxDef) string {
 	if err != nil {
 		return "Sandbox definition could not be encoded\n"
 	}
-	return fmt.Sprintf("%s", b)
+	return string(b)
 }
 
 func stringMapToJson(data common.StringMap) string {
-	copyright := data["Copyright"]
-	data["Copyright"] = "[skipped] (See 'Copyright' template for full text)"
+	copyright := data[globals.TmplCopyright]
+	data[globals.TmplCopyright] = "[skipped] (See 'copyright' template for full text)"
 	b, err := json.MarshalIndent(data, " ", "\t")
-	data["Copyright"] = copyright
+	data[globals.TmplCopyright] = copyright
 	if err != nil {
 		return "String map could not be encoded"
 	}
-	return fmt.Sprintf("%s", b)
+	return string(b)
 }
 
 func isLocked(sbDir string) bool {
@@ -512,7 +522,7 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 		if !isMinimumDataDictionary {
 			return emptyExecutionList, fmt.Errorf(globals.ErrOptionRequiresVersion, "expose-dd-tables", common.IntSliceToDottedString(globals.MinimumDataDictionaryVersion))
 		}
-		sandboxDef.PostGrantsSql = append(sandboxDef.PostGrantsSql, SingleTemplates["expose_dd_tables"].Contents)
+		sandboxDef.PostGrantsSql = append(sandboxDef.PostGrantsSql, SingleTemplates[globals.TmplExposeDdTables].Contents)
 		if sandboxDef.CustomMysqld != "" && sandboxDef.CustomMysqld != "mysqld-debug" {
 			return emptyExecutionList, fmt.Errorf("--expose-dd-tables requires mysqld-debug. A different file was indicated (--custom-mysqld=%s)\n%s",
 				sandboxDef.CustomMysqld, "CoalesceString use \"mysqld-debug\" or remove --custom-mysqld")
@@ -528,10 +538,12 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 				customMysqld, sandboxDef.CustomMysqld)
 		}
 		pluginDebugDir := fmt.Sprintf("%s/lib/plugin/debug", sandboxDef.Basedir)
-		if sandboxDef.CustomMysqld == "mysqld-debug" && common.DirExists(pluginDebugDir) {
-			sandboxDef.MyCnfOptions = append(sandboxDef.MyCnfOptions, fmt.Sprintf("plugin-dir=%s", pluginDebugDir))
-		} else {
-			rightPluginDir = false
+		if sandboxDef.CustomMysqld == "mysqld-debug" {
+			if common.DirExists(pluginDebugDir) {
+				sandboxDef.MyCnfOptions = append(sandboxDef.MyCnfOptions, fmt.Sprintf("plugin-dir=%s", pluginDebugDir))
+			} else {
+				rightPluginDir = false
+			}
 		}
 	}
 	// 5.1.0
@@ -623,11 +635,16 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 				"directory for plugins was not found")
 		}
 	}
+	mysqlxSocket := ""
+	if sandboxDef.MysqlXPort != 0 {
+		mysqlxSocket = fmt.Sprintf("%s/mysqlx-%d.sock", socketDir, sandboxDef.MysqlXPort)
+	}
 	timestamp := time.Now()
 	verList, err := common.VersionToList(sandboxDef.Version)
 	if err != nil {
 		return emptyExecutionList, errors.Wrapf(err, "")
 	}
+	shortVersion := fmt.Sprintf("%d.%d", verList[0], verList[1])
 	if sandboxDef.ClientBasedir == "" {
 		sandboxDef.ClientBasedir = sandboxDef.Basedir
 	}
@@ -641,18 +658,20 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 	if sandboxDef.SbHost == "" {
 		sandboxDef.SbHost = "127.0.0.1"
 	}
+
 	var data = common.StringMap{
 		"ShellPath":            sandboxDef.ShellPath,
 		"SbHost":               sandboxDef.SbHost,
 		"Basedir":              sandboxDef.Basedir,
 		"ClientBasedir":        sandboxDef.ClientBasedir,
-		"Copyright":            SingleTemplates["Copyright"].Contents,
+		"Copyright":            SingleTemplates[globals.TmplCopyright].Contents,
 		"AppVersion":           common.VersionDef,
 		"DateTime":             timestamp.Format(time.UnixDate),
 		"SandboxDir":           sandboxDir,
 		"CustomMysqld":         sandboxDef.CustomMysqld,
 		"Port":                 sandboxDef.Port,
 		"MysqlXPort":           sandboxDef.MysqlXPort,
+		"MysqlXSocket":         mysqlxSocket,
 		"AdminPort":            sandboxDef.AdminPort,
 		"MysqlShell":           mysqlshExecutable,
 		"BasePort":             sandboxDef.BasePort,
@@ -672,6 +691,13 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 		"DbPassword":           sandboxDef.DbPassword,
 		"RplUser":              sandboxDef.RplUser,
 		"RplPassword":          sandboxDef.RplPassword,
+		"DefaultRole":          sandboxDef.DefaultRole,
+		"CustomRoleName":       sandboxDef.CustomRoleName,
+		"CustomRolePrivileges": sandboxDef.CustomRolePrivileges,
+		"CustomRoleTarget":     sandboxDef.CustomRoleTarget,
+		"CustomRoleExtra":      sandboxDef.CustomRoleExtra,
+		"TaskUser":             sandboxDef.TaskUser,
+		"TaskUserRole":         sandboxDef.TaskUserRole,
 		"RemoteAccess":         sandboxDef.RemoteAccess,
 		"BindAddress":          sandboxDef.BindAddress,
 		"OsUser":               userDef.Username,
@@ -685,6 +711,26 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 		"ReportPort":           fmt.Sprintf("report-port=%d", sandboxDef.Port),
 		"HistoryDir":           sandboxDef.HistoryDir,
 	}
+
+	if sandboxDef.TaskUser != "" {
+		if sandboxDef.TaskUserRole == "" {
+			return emptyExecutionList, fmt.Errorf("task user defined but task role is empty")
+		}
+
+		data["TemplateName"] = globals.TmplTaskUserGrants
+		taskUserText, err := common.SafeTemplateFill(
+			globals.TmplTaskUserGrants,
+			SingleTemplates[globals.TmplTaskUserGrants].Contents,
+			data)
+		if err != nil {
+			return emptyExecutionList, fmt.Errorf("error filling task user template: %s", err)
+		}
+		data["TaskUserGrants"] = taskUserText
+		delete(data, "TemplateName")
+	} else {
+		data["TaskUserGrants"] = ""
+	}
+
 	if sandboxDef.NodeNum != 0 {
 		data["ReportHost"] = fmt.Sprintf("report-host = node-%d", sandboxDef.NodeNum)
 	}
@@ -786,7 +832,7 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 		}
 	}
 
-	err = writeScript(logger, SingleTemplates, globals.ScriptInitDb, "init_db_template", sandboxDir, data, true)
+	err = writeScript(logger, SingleTemplates, globals.ScriptInitDb, globals.TmplInitDb, sandboxDir, data, true)
 	if err != nil {
 		return emptyExecutionList, err
 	}
@@ -867,40 +913,43 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 		logger:     logger,
 		tc:         SingleTemplates,
 		scripts: []ScriptDef{
-			{globals.ScriptStart, "start_template", true},
-			{globals.ScriptStatus, "status_template", true},
-			{globals.ScriptStop, "stop_template", true},
-			{globals.ScriptClear, "clear_template", true},
-			{globals.ScriptUse, "use_template", true},
-			{globals.ScriptShowLog, "show_log_template", true},
-			{globals.ScriptShowBinlog, "show_binlog_template", true},
-			{globals.ScriptShowRelayLog, "show_relaylog_template", true},
-			{globals.ScriptSendKill, "send_kill_template", true},
-			{globals.ScriptRestart, "restart_template", true},
-			{globals.ScriptLoadGrants, "load_grants_template", true},
-			{globals.ScriptAddOption, "add_option_template", true},
-			{globals.ScriptMy, "my_template", true},
-			{globals.ScriptTestSb, "test_sb_template", true},
-			{globals.ScriptMySandboxCnf, "my_cnf_template", false},
-			{globals.ScriptAfterStart, "after_start_template", true},
-			{globals.ScriptConnectionSql, "connection_info_sql", false},
-			{globals.ScriptConnectionConf, "connection_info_conf", false},
-			{globals.ScriptConnectionJson, "connection_info_json", false},
-			{globals.ScriptReplicateFrom, "replicate_from", true},
-			{globals.ScriptMetadata, "metadata_template", true},
+			{globals.ScriptStart, globals.TmplStart, true},
+			{globals.ScriptStatus, globals.TmplStatus, true},
+			{globals.ScriptStop, globals.TmplStop, true},
+			{globals.ScriptClear, globals.TmplClear, true},
+			{globals.ScriptUse, globals.TmplUse, true},
+			{globals.ScriptShowLog, globals.TmplShowLog, true},
+			{globals.ScriptShowBinlog, globals.TmplShowBinlog, true},
+			{globals.ScriptShowRelayLog, globals.TmplShowRelaylog, true},
+			{globals.ScriptSendKill, globals.TmplSendKill, true},
+			{globals.ScriptRestart, globals.TmplRestart, true},
+			{globals.ScriptLoadGrants, globals.TmplLoadGrants, true},
+			{globals.ScriptAddOption, globals.TmplAddOption, true},
+			{globals.ScriptMy, globals.TmplMy, true},
+			{globals.ScriptTestSb, globals.TmplTestSb, true},
+			{globals.ScriptMySandboxCnf, globals.TmplMyCnf, false},
+			{globals.ScriptAfterStart, globals.TmplAfterStart, true},
+			{globals.ScriptConnectionSql, globals.TmplConnectionInfoSql, false},
+			{globals.ScriptConnectionConf, globals.TmplConnectionInfoConf, false},
+			{globals.ScriptConnectionJson, globals.TmplConnectionInfoJson, false},
+			{globals.ScriptReplicateFrom, globals.TmplReplicateFrom, true},
+			{globals.ScriptMetadata, globals.TmplMetadata, true},
+			{globals.ScriptSysbench, globals.TmplSysbench, true},
+			{globals.ScriptSysbenchReady, globals.TmplSysbenchReady, true},
+			{globals.ScriptWipeAndRestart, globals.TmplWipeAndRestart, true},
 		},
 	}
 	if sandboxDef.EnableAdminAddress {
-		sb.scripts = append(sb.scripts, ScriptDef{globals.ScriptUseAdmin, "use_admin_template", true})
+		sb.scripts = append(sb.scripts, ScriptDef{globals.ScriptUseAdmin, globals.TmplUseAdmin, true})
 	}
 	if sandboxDef.MysqlXPort != 0 {
-		sb.scripts = append(sb.scripts, ScriptDef{globals.ScriptMysqlsh, "mysqlsh_template", true})
+		sb.scripts = append(sb.scripts, ScriptDef{globals.ScriptMysqlsh, globals.TmplMysqlsh, true})
 	}
 	if isMinimumClonePlugin {
 		sb.scripts = append(sb.scripts, ScriptDef{
-			globals.ScriptCloneFrom, "clone_from", true})
+			globals.ScriptCloneFrom, globals.TmplCloneFrom, true})
 		sb.scripts = append(sb.scripts, ScriptDef{
-			globals.ScriptCloneConnectionSql, "clone_connection_sql", false})
+			globals.ScriptCloneConnectionSql, globals.TmplCloneConnectionSql, false})
 		logger.Printf("enabling clone scripts")
 	}
 	var grantsTemplateName string = ""
@@ -916,16 +965,18 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 	}
 	switch {
 	// 8.0.0
+	case shortVersion == "7.4":
+		grantsTemplateName = globals.TmplGrants5x
 	case isMinimumRoles:
-		grantsTemplateName = "grants_template8x"
+		grantsTemplateName = globals.TmplGrants8x
 		// 5.7.6
 	case isMinimumCreateUserVersion:
-		grantsTemplateName = "grants_template57"
+		grantsTemplateName = globals.TmplGrants57
 	default:
-		grantsTemplateName = "grants_template5x"
+		grantsTemplateName = globals.TmplGrants5x
 	}
 	sb.scripts = append(sb.scripts, ScriptDef{globals.ScriptGrantsMysql, grantsTemplateName, false})
-	sb.scripts = append(sb.scripts, ScriptDef{globals.ScriptSbInclude, "sb_include_template", false})
+	sb.scripts = append(sb.scripts, ScriptDef{globals.ScriptSbInclude, globals.TmplSbInclude, false})
 
 	err = writeScripts(sb)
 	if err != nil {
@@ -966,10 +1017,11 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 			return emptyExecutionList, err
 		}
 	}
+
 	if !sandboxDef.SkipStart && sandboxDef.RunConcurrently {
 		var eCommand2 = concurrent.ExecCommand{
 			Cmd:  path.Join(sandboxDir, globals.ScriptStart),
-			Args: []string{},
+			Args: sandboxDef.StartArgs,
 		}
 		logger.Printf("Adding start command to execution list\n")
 		execList = append(execList, concurrent.ExecutionList{Logger: logger, Priority: 2, Command: eCommand2})
@@ -1004,7 +1056,11 @@ func createSingleSandbox(sandboxDef SandboxDef) (execList []concurrent.Execution
 	} else {
 		if !sandboxDef.SkipStart {
 			logger.Printf("Running start script\n")
-			_, err = common.RunCmd(path.Join(sandboxDir, globals.ScriptStart))
+			if len(sandboxDef.StartArgs) > 0 {
+				_, err = common.RunCmdWithArgs(path.Join(sandboxDir, globals.ScriptStart), sandboxDef.StartArgs)
+			} else {
+				_, err = common.RunCmd(path.Join(sandboxDir, globals.ScriptStart))
+			}
 			if err != nil {
 				return emptyExecutionList, err
 			}
@@ -1117,6 +1173,7 @@ func getLogDirFromSbDescription(fullPath string) (string, error) {
 	return logDirectory, nil
 }
 
+// Deprecated: use RemoveCustomSandbox instead
 func RemoveSandbox(sandboxDir, sandbox string, runConcurrently bool) (execList []concurrent.ExecutionList, err error) {
 	fullPath := path.Join(sandboxDir, sandbox)
 	if !common.DirExists(fullPath) {
@@ -1135,6 +1192,8 @@ func RemoveSandbox(sandboxDir, sandbox string, runConcurrently bool) (execList [
 	if err != nil {
 		return emptyExecutionList, err
 	}
+
+	sandboxDefaultMarker := path.Join(fullPath, "is_default")
 	stop := path.Join(fullPath, globals.ScriptStopAll)
 	useKill := common.IsEnvSet("KILL_AS_STOP")
 	if useKill {
@@ -1161,6 +1220,18 @@ func RemoveSandbox(sandboxDir, sandbox string, runConcurrently bool) (execList [
 		_, err = common.RunCmd(stop)
 		if err != nil {
 			return emptyExecutionList, fmt.Errorf(globals.ErrWhileStoppingSandbox, fullPath)
+		}
+	}
+
+	if common.FileExists(sandboxDefaultMarker) {
+		defaultExecutable, err := common.SlurpAsString(sandboxDefaultMarker)
+		if err != nil {
+			return emptyExecutionList, fmt.Errorf("error reading default address from %s: %s",
+				sandboxDefaultMarker, err)
+		}
+		defaultExecutable = strings.TrimSpace(defaultExecutable)
+		if common.FileExists(defaultExecutable) {
+			_ = os.Remove(defaultExecutable)
 		}
 	}
 
@@ -1194,6 +1265,119 @@ func RemoveSandbox(sandboxDir, sandbox string, runConcurrently bool) (execList [
 			}
 		}
 	}
-	// common.CondPrintf("%#v\n",execList)
+	return execList, nil
+}
+
+func RemoveCustomSandbox(sandboxDir, sandbox string, runConcurrently, useStop bool) (execList []concurrent.ExecutionList, err error) {
+	fullPath := path.Join(sandboxDir, sandbox)
+	if !common.DirExists(fullPath) {
+		return emptyExecutionList, fmt.Errorf(globals.ErrDirectoryNotFound, fullPath)
+	}
+	preserve := path.Join(fullPath, globals.ScriptNoClearAll)
+	if !common.ExecExists(preserve) {
+		preserve = path.Join(fullPath, globals.ScriptNoClear)
+	}
+	if common.ExecExists(preserve) {
+		common.CondPrintf("The sandbox %s is locked\n", sandbox)
+		common.CondPrintf("You need to unlock it with \"dbdeployer admin unlock\"\n")
+		return emptyExecutionList, err
+	}
+	logDirectory, err := getLogDirFromSbDescription(fullPath)
+	if err != nil {
+		return emptyExecutionList, err
+	}
+
+	stopCmd := ""
+	sandboxDefaultMarker := path.Join(fullPath, "is_default")
+	var stopArgs []string
+	stop := path.Join(fullPath, globals.ScriptStop)
+	stopAll := path.Join(fullPath, globals.ScriptStopAll)
+	sendKillAll := path.Join(fullPath, globals.ScriptSendKillAll)
+	sendKill := path.Join(fullPath, globals.ScriptSendKill)
+
+	if useStop {
+		if common.ExecExists(stopAll) {
+			stopCmd = stopAll
+		} else {
+			if common.ExecExists(stop) {
+				stopCmd = stop
+			} else {
+				return emptyExecutionList, fmt.Errorf(globals.ErrExecutableNotFound, stop)
+			}
+		}
+	} else {
+		if common.ExecExists(sendKillAll) {
+			stopCmd = sendKillAll
+		} else {
+			if common.ExecExists(sendKill) {
+				stopCmd = sendKill
+			} else {
+				return emptyExecutionList, fmt.Errorf(globals.ErrExecutableNotFound, sendKill)
+			}
+		}
+		stopArgs = append(stopArgs, "destroy")
+	}
+
+	if runConcurrently {
+		var eCommand1 = concurrent.ExecCommand{
+			Cmd:  stopCmd,
+			Args: stopArgs,
+		}
+		execList = append(execList, concurrent.ExecutionList{Logger: nil, Priority: 0, Command: eCommand1})
+	} else {
+		if useStop {
+			common.CondPrintf("Running %s\n", stopCmd)
+			_, err = common.RunCmd(stopCmd)
+		} else {
+			common.CondPrintf("Running %s destroy\n", stopCmd)
+			_, err = common.RunCmdCtrlWithArgs(stopCmd, stopArgs, false)
+		}
+		if err != nil {
+			return emptyExecutionList, fmt.Errorf(globals.ErrWhileStoppingSandbox, fullPath)
+		}
+	}
+
+	if common.FileExists(sandboxDefaultMarker) {
+		defaultExecutable, err := common.SlurpAsString(sandboxDefaultMarker)
+		if err != nil {
+			return emptyExecutionList, fmt.Errorf("error reading default address from %s: %s",
+				sandboxDefaultMarker, err)
+		}
+		defaultExecutable = strings.TrimSpace(defaultExecutable)
+		if common.FileExists(defaultExecutable) {
+			_ = os.Remove(defaultExecutable)
+		}
+	}
+
+	rmTargets := []string{fullPath, logDirectory}
+
+	for _, target := range rmTargets {
+		if target == "" {
+			continue
+		}
+		cmdStr := "rm"
+		rmArgs := []string{"-rf", target}
+		if runConcurrently {
+			var eCommand2 = concurrent.ExecCommand{
+				Cmd:  cmdStr,
+				Args: rmArgs,
+			}
+			execList = append(execList, concurrent.ExecutionList{Logger: nil, Priority: 1, Command: eCommand2})
+		} else {
+			for _, item := range rmArgs {
+				cmdStr += " " + item
+			}
+			if globals.UsingDbDeployer && target != logDirectory {
+				common.CondPrintf("Running %s\n", cmdStr)
+			}
+			_, err = common.RunCmdWithArgs("rm", rmArgs)
+			if err != nil {
+				return emptyExecutionList, fmt.Errorf(globals.ErrWhileDeletingSandbox, target)
+			}
+			if globals.UsingDbDeployer && target != logDirectory {
+				common.CondPrintf("Directory %s deleted\n", target)
+			}
+		}
+	}
 	return execList, nil
 }

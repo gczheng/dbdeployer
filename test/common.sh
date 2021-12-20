@@ -1,6 +1,6 @@
 #
 # DBDeployer - The MySQL Sandbox
-# Copyright © 2006-2019 Giuseppe Maxia
+# Copyright © 2006-2020 Giuseppe Maxia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -518,6 +518,11 @@ function ok_file_exists {
     ok_generic_exists $filename "file" -f
 }
 
+function ok_file_does_not_exists {
+    filename=$1
+    ok_generic_does_not_exist $filename "file" -f
+}
+
 function ok_executable_exists {
     filename=$1
     ok_generic_exists $filename "file" -x
@@ -582,6 +587,8 @@ function test_completeness {
         sbdir=$SANDBOX_HOME/$dir_name$version_path
     fi
     base_scripts=(use start stop restart add_option send_kill clear test_sb status)
+    single_scripts=(metadata load_grants init_db metadata add_option my)
+    replication_scripts=(replicate_from initialize_slaves)
     script_postfix=""
     folders=(data tmp)
     non_scripts=(data/msandbox.err sbdescription.json )
@@ -591,7 +598,7 @@ function test_completeness {
     fi
     case  "$mode" in
         single)
-            scripts=( "${base_scripts[@]}" )
+            scripts=( "${base_scripts[@]}" "${single_scripts[@]}" )
             ;;
         multiple)
             scripts=( "${base_scripts[@]}" )
@@ -659,13 +666,14 @@ function alt_dbdeployer {
     save_sandbox_home=$SANDBOX_HOME
 
     export SANDBOX_BINARY=$HOME/opt/mysql
+    export alt_sandboxes=/tmp/alt_sandboxes
 
-    if [  ! -d ./tmp_sandboxes ]
+    if [  ! -d $alt_sandboxes ]
     then
-        mkdir tmp_sandboxes
+        mkdir $alt_sandboxes
     fi
 
-    export HOME=$PWD/tmp_sandboxes
+    export HOME=$alt_sandboxes
     export SANDBOX_HOME=$HOME/sandboxes
 
     (set -x

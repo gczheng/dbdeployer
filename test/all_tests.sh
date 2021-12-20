@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # DBDeployer - The MySQL Sandbox
-# Copyright © 2006-2019 Giuseppe Maxia
+# Copyright © 2006-2020 Giuseppe Maxia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,8 +27,13 @@ fi
 version=$1
 if [ -z $version ]
 then
-    echo "version needed"
-    exit 1
+    version=$(cat common/VERSION)
+    if [ -z $version ]
+    then
+        echo "version needed"
+        exit 1
+    fi
+    echo "### Using version $version"
 fi
 
 executable=dbdeployer-${version}.linux
@@ -111,29 +116,36 @@ function run_test {
     fi
 }
 
-function all_tests {
-    if [ -z "$ONLY_MOCK" ]
+function mock_tests {
+    ./test/docker-test.sh $version test/run-mock-tests.sh
+}
+
+function init_tests {
+    exists=$(docker ps -a | grep initdbtest )
+    if [ -n "$exists" ]
     then
-        run_test ./scripts/sanity_check.sh
-        run_test ./test/go-unit-tests.sh
-        run_test ./test/functional-test.sh
-        run_test ./test/docker-test.sh $version
+        docker rm -v -f initdbtest
     fi
-    run_test ./test/mock/defaults-change.sh
-    run_test ./test/mock/short-versions.sh
-    run_test ./test/mock/direct-paths.sh
-    run_test ./test/mock/expected_ports.sh
-    run_test ./test/mock/read-only-replication.sh
-    run_test ./test/mock/ndb_test.sh
-    run_test ./test/mock/pxc_test.sh
-    run_test ./test/mock/fanin_test.sh
-    run_test ./test/mock/cookbook.sh
-    run_test ./test/mock/parallel.sh
-    if [ -n "$COMPLETE_PORT_TEST" ]
+
+    docker run -ti \
+        -v $PWD/$executable:/usr/bin/dbdeployer \
+        -v $PWD/test/test-init.sh:/home/msandbox/test-init.sh \
+        -e EXIT_ON_FAILURE=1 \
+        --hostname=initdbtest \
+        datacharmer/mysql-sb-base /home/msandbox/test-init.sh
+}
+
+function all_tests {
+    run_test ./scripts/sanity_check.sh
+    run_test ./test/go-unit-tests.sh
+    run_test ./test/test-linux-init.sh $version
+    run_test ./test/functional-test.sh
+    run_test ./test/docker-test.sh $version
+    run_test ./test/cookbook-test.sh
+    run_test init_tests
+    if [ -z "$GITHUB_ACTIONS" ]
     then
-        run_test ./test/mock/port-clash.sh
-    else
-        run_test ./test/mock/port-clash.sh sparse
+        run_test mock_tests
     fi
 }
 
@@ -153,8 +165,8 @@ do
         lf_fail=$((lf_fail+lfg_fail))
         lf_pass=$((lf_pass+lfg_pass))
         lf_tests=$((lf_pass+lf_fail))
-        printf "# %-25s - tests: %4d - pass: %4d - fail: %4d\n" $fname $lf_tests $lf_pass $lf_fail
-        printf "# %-25s - tests: %4d - pass: %4d - fail: %4d\n" $fname $lf_tests $lf_pass $lf_fail >> $log_summary
+        printf "# %-25s - tests: %5d - pass: %5d - fail: %5d\n" $fname $lf_tests $lf_pass $lf_fail
+        printf "# %-25s - tests: %5d - pass: %5d - fail: %5d\n" $fname $lf_tests $lf_pass $lf_fail >> $log_summary
     fi
 done
 echo $dash_line

@@ -3,13 +3,15 @@ This is a port of [MySQL-Sandbox](https://github.com/datacharmer/mysql-sandbox),
 
 Documentation updated for version {{.Version}} ({{.Date}})
 
-[![Build Status](https://travis-ci.org/datacharmer/dbdeployer.svg "Travis CI status")](https://travis-ci.org/datacharmer/dbdeployer)
+![Build Status](https://github.com/datacharmer/dbdeployer/workflows/.github/workflows/all_tests.yml/badge.svg)
 
 # Table of contents
 
 - [Installation](#installation)
+- [Initializing the environment](#initializing-the-environment)
 - [Updating dbdeployer](#updating-dbdeployer)
 - [Main operations](#main-operations)
+- [Database users](#database-users)
 - [Database server flavors](#database-server-flavors)
 - [Getting remote tarballs](#getting-remote-tarballs)
   - [Looking at the available tarballs](#looking-at-the-available-tarballs)
@@ -34,8 +36,12 @@ Documentation updated for version {{.Version}} ({{.Date}})
 - [Sandbox customization](#sandbox-customization)
 - [Sandbox management](#sandbox-management)
 - [Sandbox macro operations](#sandbox-macro-operations)
+- [Default sandbox](#default-sandbox)
+- [Using the latest sandbox](#using-the-latest-sandbox)
 - [Sandbox upgrade](#sandbox-upgrade)
 - [Dedicated admin address](#dedicated-admin-address)
+- [Loading sample data into sandboxes](#loading-sample-data-into-sandboxes)
+- [Running sysbench](#running-sysbench)
 - [Obtaining sandbox metadata](#obtaining-sandbox-metadata)
 - [Replication between sandboxes](#replication-between-sandboxes)
 - [Importing databases into sandboxes](#importing-databases-into-sandboxes)
@@ -85,6 +91,22 @@ Use --skip-library-check to skip this check
 
 If you use `--skip-library-check`, the above check won't be performed, and the deployment may fail and leave you with an incomplete sandbox.
 Skipping the check may be justified when deploying a very old version of MySQL (4.1, 5.0, 5.1)
+
+
+# Initializing the environment
+
+Immediately after installing dbdeployer, you can get the environment ready for operations using the command
+
+```
+$ dbdeployer init
+```
+
+This command creates the necessary directories, then downloads the latest MySQL binaries, and expands them in the right place. It also enables [command line completion](#command-line-completion).
+
+Running the command without options is what most users need. Advanced ones may look at the documentation to fine tune the initialization.
+
+    {{dbdeployer init -h}}
+
 
 # Updating dbdeployer
 
@@ -155,6 +177,103 @@ The ``deploy replication`` command will install a master and two or more slaves,
 	{{dbdeployer deploy replication -h}}
 
 As of version 1.21.0, you can use Percona Xtradb Cluster tarballs to deploy replication of type *pxc*. This deployment only works on Linux.
+
+# Database users
+
+The default users for each server deployed by dbdeployer are:
+
+* `root`, with the default grants as given by the server version being installed. 
+* `msandbox`, with all privileges except GRANT option.
+* `msandbox_rw`, with minimum read/write privileges.
+* `msandbox_ro`, with read-only privileges.
+* `rsandbox`, with only replication related privileges (password: `rsandbox`)
+
+The main user name (`msandbox`) and password (`msandbox`) can be changed using options `--db-user` and `db-password` respectively.
+
+Every user is assigned by default to a limited scope (`127.%`) so that they can only communicate with the local host.
+The scope can be changed using options `--bind-address` and `--remote-access`.
+
+In MySQL 8.0 the above users are instantiated using roles. You can also define a custom role, and assign it to the main user.
+
+You can create a different role and assign it to the default user with options like the following:
+
+```
+dbdeployer deploy single 8.0.19 \
+    --custom-role-name=R_POWERFUL \
+    --custom-role-privileges='ALL PRIVILEGES' \
+    --custom-role-target='*.*' \
+    --custom-role-extra='WITH GRANT OPTION' \
+    --default-role=R_POWERFUL \
+    --bind-address=0.0.0.0 \
+    --remote-access='%' \
+    --db-user=differentuser \
+    --db-password=somethingdifferent
+```
+
+The result of this operation will be:
+
+```
+$ ~/sandboxes/msb_8_0_19/use
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 9
+Server version: 8.0.19 MySQL Community Server - GPL
+
+Copyright (c) 2000, 2020, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql [localhost:8019] {differentuser} ((none)) > show grants\G
+*************************** 1. row ***************************
+Grants for differentuser@localhost: GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, 
+DROP, RELOAD, SHUTDOWN, PROCESS, FILE, REFERENCES, INDEX, ALTER, SHOW DATABASES, 
+SUPER, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE, REPLICATION SLAVE, REPLICATION CLIENT, 
+CREATE VIEW, SHOW VIEW, CREATE ROUTINE, ALTER ROUTINE, CREATE USER, EVENT, TRIGGER, 
+CREATE TABLESPACE, CREATE ROLE, DROP ROLE ON *.* TO `differentuser`@`localhost` WITH GRANT OPTION
+*************************** 2. row ***************************
+Grants for differentuser@localhost: GRANT APPLICATION_PASSWORD_ADMIN,AUDIT_ADMIN,BACKUP_ADMIN,BINLOG_ADMIN,
+BINLOG_ENCRYPTION_ADMIN,CLONE_ADMIN,CONNECTION_ADMIN,ENCRYPTION_KEY_ADMIN,GROUP_REPLICATION_ADMIN,
+INNODB_REDO_LOG_ARCHIVE,PERSIST_RO_VARIABLES_ADMIN,REPLICATION_APPLIER,REPLICATION_SLAVE_ADMIN,
+RESOURCE_GROUP_ADMIN,RESOURCE_GROUP_USER,ROLE_ADMIN,SERVICE_CONNECTION_ADMIN,SESSION_VARIABLES_ADMIN,
+SET_USER_ID,SYSTEM_USER,SYSTEM_VARIABLES_ADMIN,TABLE_ENCRYPTION_ADMIN,XA_RECOVER_ADMIN 
+ON *.* TO `differentuser`@`localhost` WITH GRANT OPTION
+*************************** 3. row ***************************
+Grants for differentuser@localhost: GRANT `R_POWERFUL`@`%` TO `differentuser`@`localhost`
+3 rows in set (0.01 sec)
+```
+
+Instead of assigning the custom role to the default user, you can also create a task user.
+
+```
+$ dbdeployer deploy single 8.0 \
+  --task-user=task_user \
+  --custom-role-name=R_ADMIN \
+  --task-user-role=R_ADMIN 
+```
+
+The options shown in this section only apply to MySQL 8.0.
+
+There is a method of creating users during deployment in any versions:
+
+1. create a SQL file containing the `CREATE USER` and `GRANT` statements you want to run
+2. use the option `--post-grants-sql-file` to load the instructions.
+
+```
+cat << EOF > orchestrator.sql
+
+CREATE DATABASE IF NOT EXISTS orchestrator;
+CREATE USER orchestrator IDENTIFIED BY 'msandbox';
+GRANT ALL PRIVILEGES ON orchestrator.* TO orchestrator;
+GRANT SELECT ON mysql.slave_master_info TO orchestrator;
+
+EOF
+
+$ dbdeployer deploy single 5.7 \
+  --post-grants-sql-file=$PWD/orchestrator.sql
+```
 
 # Database server flavors
 
@@ -923,6 +1042,13 @@ You can run a command in several sandboxes at once, using the ``global`` command
 
     {{dbdeployer global -h }}
 
+Using `global`, you can see the status, start, stop, restart, test all sandboxes, or run SQL and metadata queries.
+
+The `global` command accepts filters (as of version 1.44.0) to limit which sandboxes are affected.
+
+{{dbdeployer global -h}}
+
+
 The sandboxes can also be deleted, either one by one or all at once:
 
     {{dbdeployer delete -h }}
@@ -936,6 +1062,59 @@ A locked sandbox will not be deleted, even when running ``dbdeployer delete ALL`
 The lock can also be reverted using
 
     $ dbdeployer admin unlock sandbox_name
+
+# Default sandbox
+
+You can set a default sandbox using the command `dbdeployer admin set-default sandbox_name`
+
+{{dbdeployer admin set-default -h}}
+
+
+For example:
+
+    $ dbdeployer admin set-default msb_8_0_20
+
+This command creates a script `$HOME/sandboxes/default` that will point to the sandbox you have chosen.
+After that, you can use the sandbox using `~/sandboxes/default command`, such as
+
+    $ ~/sandboxes/default status
+    $ ~/sandboxes/default use   # will get the `mysql` prompt
+    $ ~/sandboxes/default use -e 'select version()'
+
+
+If the sandbox chosen as default is a multiple or replication sandbox, you can use the commands that are available there
+
+    $ ~/sandboxes/default status_all
+    $ ~/sandboxes/default use_all 'select @@version, @@server_id, @@port'
+
+
+You can have more than one default sandbox, using the option `--default-sandbox-executable=name`.
+For example:
+
+
+    $ dbdeployer admin set-default msb_8_0_20 --default-sandbox-executable=single
+    $ dbdeployer admin set-default repl_8_0_20 --default-sandbox-executable=repl
+    $ dbdeployer admin set-default group_msb_8_0_20 --default-sandbox-executable=group
+
+With the above commands, you will have three executables in ~/sandboxes, named `single`, `repl`, and `group`.
+You can use them just like the `default` executable:
+
+    $ ~/sandboxes/single status
+    $ ~/sandboxes/repl check_slaves
+    $ ~/sandboxes/group check_nodes
+
+
+# Using the latest sandbox
+
+With the command `dbdeployer use`, you will use the latest sandbox that was deployed. If it is a single sandbox, dbdeployer will invoke the `./use` command. If it is a compound sandbox, it will run the `./n1` command.
+If you don't want the latest sandbox, you can indicate a specific one:
+
+```
+$ dbdeployer use msb_5_7_31
+``` 
+
+If that sandbox was stopped, this command will restart it.
+
 
 # Sandbox upgrade
 
@@ -994,6 +1173,27 @@ Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
 ## ADMIN ##mysql [127.0.0.1:19015] {root} ((none)) >
 ```
 Multiple sandboxes have other shortcuts for the same purpose: `./ma` gives access to the master with admin user, as do the `./sa1` and `./sa2` scripts for slaves. There are similar `./na1` `./na2` scripts for all nodes, and a `./use_all_admin` script sends a query to all nodes through an admin user.
+
+# Loading sample data into sandboxes
+
+The command `data-load` manages the loading of sample databases into a sandbox. (Available since 1.56.0)
+It has the following sub-commands:
+
+* `list` shows the available databases (with the option `--full-info` that displays all the details on the archives)
+* `show archive-name` displays the contents of one archive
+* `get archive-name sandbox-name` downloads the database, unpacks it, and loads its contents into the given sandbox. If the chosen sandbox is not single, the data is loaded into the primary node (`master` or `node1`, depending on the topology)
+* `export file-name` saves the archives specifications to a JSON file 
+* `import file-name` loads the archives specifications from a JSON file 
+* `reset` Restores the archives specifications to their default values
+
+# Running sysbench
+
+Sandboxes created with version 1.56.0+ include two scripts:
+
+* `sysbench` invokes the sysbench utility with the necessary connection options alredy filled. Users can specify all remaining options to complete the task.
+* `sysbench_ready` can perform two pre-defined actions: `prepare` or `run`.
+
+In both cases, the sysbench utility must already be installed. The scripts look at the dupporting files in standard loactions. If sysbench was installed manually, errors may occur.
 
 # Obtaining sandbox metadata
 
@@ -1439,7 +1639,13 @@ There is a file ``./docs/dbdeployer_completion.sh``, which is automatically gene
     $ sudo cp ./docs/dbdeployer_completion.sh /usr/local/etc/bash_completion.d
     $ source /usr/local/etc/bash_completion
 
-Then, you can use completion as follows:
+There is a dbdeployer command that does all the above for you:
+
+```
+dbdeployer defaults enable-bash-completion --remote --run-it
+```
+
+When completion is enabled, you can use it as follows:
 
     $ dbdeployer [tab]
         admin  defaults  delete  deploy  global  sandboxes  unpack  usage  versions

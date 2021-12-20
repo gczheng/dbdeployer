@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,15 +19,27 @@ type GuessInfo struct {
 	Url     string
 }
 
-var (
-	DownloadUrlList = map[string]string{
-		"5.7": "https://dev.mysql.com/get/Downloads/MySQL-5.7",
-		"8.0": "https://dev.mysql.com/get/Downloads/MySQL-8.0",
+var allowedGuessVersions = []string{"5.7", "8.0"}
+
+func isAllowedForGuessing(s string) bool {
+	for _, v := range allowedGuessVersions {
+		if v == s {
+			return true
+		}
 	}
-	FileNameTemplates = map[string]string{
-		"linux":  "mysql-{{.Version}}-linux-x86_64-minimal.{{.Ext}}",
-		"darwin": "mysql-{{.Version}}-macos10.14-x86_64.{{.Ext}}",
-	}
+	return false
+}
+
+//var (
+//	downloadUrlList = map[string]string{
+//		"5.7": defaults.Defaults().DownloadUrl + "-5.7", // "https://dev.mysql.com/get/Downloads/MySQL-5.7",
+//		"8.0": defaults.Defaults().DownloadUrl + "-8.0", //https://dev.mysql.com/get/Downloads/MySQL-8.0",
+//	}
+//	fileNameTemplates = map[string]string{
+//		"linux":  defaults.Defaults().DownloadNameLinux, // "mysql-{{.Version}}-linux-x86_64-minimal.{{.Ext}}",
+//		"darwin": defaults.Defaults().DownloadNameMacOs, // "mysql-{{.Version}}-macos10.15-x86_64.{{.Ext}}",
+//	}
+/*
 	Extensions = map[string]map[string]string{
 		"linux": {
 			"5.7": "tar.gz",
@@ -38,4 +50,5 @@ var (
 			"8.0": "tar.gz",
 		},
 	}
-)
+*/
+//)

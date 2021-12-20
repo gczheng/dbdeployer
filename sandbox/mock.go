@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import (
 
 const (
 	DefaultMockDir       = "mock_dir"
-	noOpMockTemplateName = "no_op_mock_template"
+	noOpMockTemplateName = globals.TmplNoOpMock
 )
 
 var (
@@ -64,11 +64,12 @@ func SetMockEnvironment(mockUpperDir string) error {
 	saveHome = os.Getenv("HOME")
 	saveSandboxBinary = os.Getenv("SANDBOX_BINARY")
 	saveSandboxHome = os.Getenv("SANDBOX_HOME")
-	os.Setenv("HOME", home)
-	os.Setenv("SANDBOX_HOME", mockSandboxHome)
-	os.Setenv("SANDBOX_BINARY", mockSandboxBinary)
-	os.Setenv("HOME", home)
-	os.Setenv("SLEEP_TIME", "0")
+	_ = os.Setenv("HOME", home)
+	_ = os.Setenv("SANDBOX_HOME", mockSandboxHome)
+	_ = os.Setenv("SANDBOX_BINARY", mockSandboxBinary)
+	_ = os.Setenv("HOME", home)
+	_ = os.Setenv("SLEEP_TIME", "0")
+	_ = os.Setenv("SB_MOCKING", "1")
 	defaults.ResetDefaults()
 	defaults.ConfigurationDir = path.Join(home, defaults.ConfigurationDirName)
 	defaults.ConfigurationFile = path.Join(home, defaults.ConfigurationDirName, defaults.ConfigurationFileName)
@@ -84,10 +85,10 @@ func RemoveMockEnvironment(mockUpperDir string) error {
 	if err != nil {
 		return err
 	}
-	os.Setenv("HOME", saveHome)
-	os.Setenv("SANDBOX_HOME", saveSandboxHome)
-	os.Setenv("SANDBOX_BINARY", saveSandboxBinary)
-	os.Setenv("SLEEP_TIME", "")
+	_ = os.Setenv("HOME", saveHome)
+	_ = os.Setenv("SANDBOX_HOME", saveSandboxHome)
+	_ = os.Setenv("SANDBOX_BINARY", saveSandboxBinary)
+	_ = os.Setenv("SLEEP_TIME", "")
 	defaults.ResetDefaults()
 	return nil
 }
@@ -169,7 +170,7 @@ func MySQLMockSet(debug bool) []MockFileSet {
 		[]ScriptDef{
 			{mysqld, noOpMockTemplateName, true},
 			{globals.FnMysql, noOpMockTemplateName, true},
-			{globals.FnMysqldSafe, "mysqld_safe_mock_template", true},
+			{globals.FnMysqldSafe, globals.TmplMysqldSafeMock, true},
 		},
 	}
 	scriptsFileSet := MockFileSet{

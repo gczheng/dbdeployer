@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2021 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ package globals
 
 import "strings"
 
-// This variable is changed to true when the "cmd" package is activated,
+// UsingDbDeployer is changed to true when the "cmd" package is activated,
 // meaning that we're using the command line interface of dbdeployer.
 // It is used to make decisions whether to write messages to the screen
 // when calling sandbox creation functions from other apps.
@@ -35,68 +35,81 @@ const (
 	SkipLibraryCheck   = "skip-library-check"
 
 	// Instantiated in cmd/admin.go
-	RemoteLabel         = "remote"
-	RemoteUrlLabel      = "remote-url"
-	CompletionFileLabel = "completion-file"
-	CompletionFileValue = "dbdeployer_completion.sh"
-	RunItLabel          = "run-it"
-	CamelCase           = "camel-case"
+	RemoteLabel              = "remote"
+	RemoteUrlLabel           = "remote-url"
+	CompletionFileLabel      = "completion-file"
+	CompletionFileValue      = "dbdeployer_completion.sh"
+	RunItLabel               = "run-it"
+	CamelCase                = "camel-case"
+	DefaultSandboxExecutable = "default-sandbox-executable"
+
+	// Instantiated in cmd/init.go
+	SkipAllDownloadsLabel    = "skip-all-downloads"
+	SkipTarballDownloadLabel = "skip-tarball-download"
+	SkipShellCompletionLabel = "skip-shell-completion"
 
 	// Instantiated in cmd/deploy.go
-	BasePortLabel           = "base-port"
-	BaseServerIdLabel       = "base-server-id"
-	BinaryVersionLabel      = "binary-version"
-	BindAddressLabel        = "bind-address"
-	BindAddressValue        = LocalHostIP
-	ConcurrentLabel         = "concurrent"
-	CustomMysqldLabel       = "custom-mysqld"
-	DbPasswordLabel         = "db-password"
-	DbPasswordValue         = "msandbox"
-	DbUserLabel             = "db-user"
-	DbUserValue             = "msandbox"
-	DefaultsLabel           = "defaults"
-	DisableMysqlXLabel      = "disable-mysqlx"
-	EnableGeneralLogLabel   = "enable-general-log"
-	EnableMysqlXLabel       = "enable-mysqlx"
-	EnableAdminAddressLabel = "enable-admin-address"
-	ExposeDdTablesLabel     = "expose-dd-tables"
-	ForceLabel              = "force"
-	GtidLabel               = "gtid"
-	HistoryDirLabel         = "history-dir"
-	InitGeneralLogLabel     = "init-general-log"
-	InitOptionsLabel        = "init-options"
-	KeepServerUuidLabel     = "keep-server-uuid"
-	LogLogDirectoryLabel    = "log-directory"
-	LogSBOperationsLabel    = "log-sb-operations"
-	MyCnfFileLabel          = "my-cnf-file"
-	MyCnfOptionsLabel       = "my-cnf-options"
-	NativeAuthPluginLabel   = "native-auth-plugin"
-	OverwriteLabel          = "overwrite"
-	PortLabel               = "port"
-	PostGrantsSqlFileLabel  = "post-grants-sql-file"
-	PostGrantsSqlLabel      = "post-grants-sql"
-	PreGrantsSqlFileLabel   = "pre-grants-sql-file"
-	PreGrantsSqlLabel       = "pre-grants-sql"
-	RawLabel                = "raw"
-	RemoteAccessLabel       = "remote-access"
-	RemoteAccessValue       = "127.%"
-	ReplCrashSafeLabel      = "repl-crash-safe"
-	RplPasswordLabel        = "rpl-password"
-	RplPasswordValue        = "rsandbox"
-	RplUserLabel            = "rpl-user"
-	RplUserValue            = "rsandbox"
-	SandboxDirectoryLabel   = "sandbox-directory"
-	SkipLoadGrantsLabel     = "skip-load-grants"
-	SkipReportHostLabel     = "skip-report-host"
-	SkipReportPortLabel     = "skip-report-port"
-	SkipStartLabel          = "skip-start"
-	UseTemplateLabel        = "use-template"
-	ClientFromLabel         = "client-from"
-	PromptLabel             = "prompt"
-	FlavorInPromptLabel     = "flavor-in-prompt"
-	PromptValue             = "mysql"
-	SocketInDatadirLabel    = "socket-in-datadir"
-	PortAsServerIdLabel     = "port-as-server-id"
+	DefaultRoleLabel          = "default-role"
+	CustomRoleNameLabel       = "custom-role-name"
+	CustomRolePrivilegesLabel = "custom-role-privileges"
+	CustomRoleTargetLabel     = "custom-role-target"
+	CustomRoleExtraLabel      = "custom-role-extra"
+	TaskUserLabel             = "task-user"
+	TaskUserRoleLabel         = "task-user-role"
+	BasePortLabel             = "base-port"
+	BaseServerIdLabel         = "base-server-id"
+	BinaryVersionLabel        = "binary-version"
+	BindAddressLabel          = "bind-address"
+	BindAddressValue          = LocalHostIP
+	ConcurrentLabel           = "concurrent"
+	CustomMysqldLabel         = "custom-mysqld"
+	DbPasswordLabel           = "db-password"
+	DbPasswordValue           = "msandbox"
+	DbUserLabel               = "db-user"
+	DbUserValue               = "msandbox"
+	DefaultsLabel             = "defaults"
+	DisableMysqlXLabel        = "disable-mysqlx"
+	EnableGeneralLogLabel     = "enable-general-log"
+	EnableMysqlXLabel         = "enable-mysqlx"
+	EnableAdminAddressLabel   = "enable-admin-address"
+	ExposeDdTablesLabel       = "expose-dd-tables"
+	ForceLabel                = "force"
+	GtidLabel                 = "gtid"
+	HistoryDirLabel           = "history-dir"
+	InitGeneralLogLabel       = "init-general-log"
+	InitOptionsLabel          = "init-options"
+	KeepServerUuidLabel       = "keep-server-uuid"
+	LogLogDirectoryLabel      = "log-directory"
+	LogSBOperationsLabel      = "log-sb-operations"
+	MyCnfFileLabel            = "my-cnf-file"
+	MyCnfOptionsLabel         = "my-cnf-options"
+	NativeAuthPluginLabel     = "native-auth-plugin"
+	OverwriteLabel            = "overwrite"
+	PortLabel                 = "port"
+	PostGrantsSqlFileLabel    = "post-grants-sql-file"
+	PostGrantsSqlLabel        = "post-grants-sql"
+	PreGrantsSqlFileLabel     = "pre-grants-sql-file"
+	PreGrantsSqlLabel         = "pre-grants-sql"
+	RawLabel                  = "raw"
+	RemoteAccessLabel         = "remote-access"
+	RemoteAccessValue         = "127.%"
+	ReplCrashSafeLabel        = "repl-crash-safe"
+	RplPasswordLabel          = "rpl-password"
+	RplPasswordValue          = "rsandbox"
+	RplUserLabel              = "rpl-user"
+	RplUserValue              = "rsandbox"
+	SandboxDirectoryLabel     = "sandbox-directory"
+	SkipLoadGrantsLabel       = "skip-load-grants"
+	SkipReportHostLabel       = "skip-report-host"
+	SkipReportPortLabel       = "skip-report-port"
+	SkipStartLabel            = "skip-start"
+	UseTemplateLabel          = "use-template"
+	ClientFromLabel           = "client-from"
+	PromptLabel               = "prompt"
+	FlavorInPromptLabel       = "flavor-in-prompt"
+	PromptValue               = "mysql"
+	SocketInDatadirLabel      = "socket-in-datadir"
+	PortAsServerIdLabel       = "port-as-server-id"
 
 	// Instantiated in cmd/single.go
 	MasterLabel    = "master"
@@ -107,6 +120,7 @@ const (
 	// Instantiated in cmd/info.go
 	EarliestLabel = "earliest"
 	LimitLabel    = "limit"
+	StatsLabel    = "stats"
 
 	// Instantiated in cmd/remote.go
 	MB                = 1024 * 1024
@@ -118,12 +132,14 @@ const (
 	// Instantiated in cmd/downloads.go
 	OSLabel                = "OS"
 	ShowUrlLabel           = "show-url"
+	UrlLabel               = "url"
 	QuietLabel             = "quiet"
 	GuessLatestLabel       = "guess-latest"
 	MinimalLabel           = "minimal"
 	NewestLabel            = "newest"
 	AddEmptyItemLabel      = "add-empty-item"
 	DeleteAfterUnpackLabel = "delete-after-unpack"
+	MaxItemsLabel          = "max-items"
 
 	// Instantiated in cmd/admin.go
 	VerboseLabel = "verbose"
@@ -153,6 +169,7 @@ const (
 	TopologyValue       = "master-slave"
 	PxcLabel            = "pxc"
 	NdbLabel            = "ndb"
+	ChangeMasterOptions = "change-master-options"
 
 	// Instantiated in cmd/unpack.go and unpack/unpack.go
 	GzExt              = ".gz"
@@ -163,21 +180,36 @@ const (
 	TarXzExt           = ".tar.xz"
 	TargetServerLabel  = "target-server"
 	TgzExt             = ".tgz"
+	ZipExt             = ".zip"
 	UnpackVersionLabel = "unpack-version"
 	VerbosityLabel     = "verbosity"
 	FlavorLabel        = "flavor"
+	TypeLabel          = "type"
+	NameLabel          = "name"
+	PortRangeLabel     = "port-range"
+	VersionLabel       = "version"
+	ShortVersionLabel  = "short-version"
 	FlavorFileName     = "FLAVOR"
+
+	// Instantiated in cmd/use.go
+	RunLabel = "run"
+	LsLabel  = "ls"
 
 	// Instantiated in cmd/delete.go
 	SkipConfirmLabel = "skip-confirm"
 	ConfirmLabel     = "confirm"
+	UseStopLabel     = "use-stop"
 
 	// Instantiated in cmd/sandboxes.go
-	CatalogLabel  = "catalog"
-	HeaderLabel   = "header"
-	TableLabel    = "table"
-	FullInfoLabel = "full-info"
-	LocalHostIP   = "127.0.0.1"
+	CatalogLabel   = "catalog"
+	HeaderLabel    = "header"
+	TableLabel     = "table"
+	FullInfoLabel  = "full-info"
+	ByDateLabel    = "by-date"
+	ByVersionLabel = "by-version"
+	LatestLabel    = "latest"
+	OldestLabel    = "oldest"
+	LocalHostIP    = "127.0.0.1"
 
 	// Instantiated in cmd/templates.go
 	SimpleLabel       = "simple"
@@ -244,6 +276,9 @@ const (
 	ScriptCloneConnectionSql = "clone_connection.sql"
 	ScriptCloneFrom          = "clone_from"
 	ScriptMetadata           = "metadata"
+	ScriptSysbench           = "sysbench"
+	ScriptSysbenchReady      = "sysbench_ready"
+	ScriptWipeAndRestart     = "wipe_and_restart"
 
 	ScriptCheckMsNodes      = "check_ms_nodes"
 	ScriptCheckNodes        = "check_nodes"
@@ -259,6 +294,10 @@ const (
 	ScriptTestReplication   = "test_replication"
 	ScriptTestSbAll         = "test_sb_all"
 	ScriptUseAll            = "use_all"
+	ScriptUseAllAdmin       = "use_all_admin"
+	ScriptExecAll           = "exec_all"
+	ScriptWipeRestartAll    = "wipe_and_restart_all"
+	ScriptMetadataAll       = "metadata_all"
 
 	// These constants are kept for reference
 	// although they are not used directly in the code.
@@ -356,7 +395,14 @@ var (
 	MariaDbMinimumMultiSourceVersion          = NumericVersion{10, 0, 0}
 	MinimumXtradbClusterVersion               = NumericVersion{5, 6, 14}
 	MinimumXtradbClusterNoSlaveUpdatesVersion = NumericVersion{5, 7, 14}
+	MinimumXtradbClusterEncryptCluster        = NumericVersion{5, 7, 14}
+	MinimumXtradbClusterRsync                 = NumericVersion{5, 7, 14}
+	MaximumXtradbClusterRsync                 = NumericVersion{5, 7, 99}
+	MinimumXtradbClusterXtraBackup            = NumericVersion{8, 0, 15}
 	MinimumNdbClusterVersion                  = NumericVersion{7, 0, 0}
+	MinimumNdbInstallDb                       = NumericVersion{7, 0, 0}
+	MaximumNdbInstallDb                       = NumericVersion{7, 4, 99}
+	MinimumNdbInitialize                      = NumericVersion{7, 5, 0}
 	MinimumRootAuthVersion                    = NumericVersion{10, 4, 3}
 	MinimumAdminAddressVersion                = NumericVersion{8, 0, 14}
 	MinimumMySQLShellEmbed                    = NumericVersion{8, 0, 4}
@@ -421,6 +467,13 @@ var ExportReferenceData = map[string]interface{}{
 }
 
 var (
+	ReservedPorts = []int{
+		1186,  // MySQL Cluster
+		3306,  // MySQL Server regular port
+		5432,  // PostgreSQL default port
+		33060, // MySQLX
+		33062, // MySQL Server admin port
+	}
 	DashLine     = strings.Repeat("-", lineLength)
 	StarLine     = strings.Repeat("*", lineLength)
 	HashLine     = strings.Repeat("#", lineLength)
@@ -439,16 +492,15 @@ var (
 	}
 	SupportedAllVersions = []string{
 		"4.1", "5.0", "5.1", "5.5", "5.6", "5.7", "8.0",
-		"10.0", "10.1", "10.2", "10.3", "10.4",
+		"10.0", "10.1", "10.2", "10.3", "10.4", "10.5",
 	}
-
 	// Extra executables needed for PXC
-	NeededPxcExecutables = []string{"rsync", "lsof"}
+	NeededPxcExecutables = []string{"rsync", "lsof", "socat"}
 )
 
 var ShellScriptCopyright string = `
 #    DBDeployer - The MySQL Sandbox
-#    Copyright (C) 2006-2019 Giuseppe Maxia
+#    Copyright (C) 2006-2020 Giuseppe Maxia
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.

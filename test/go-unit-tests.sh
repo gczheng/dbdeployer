@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # DBDeployer - The MySQL Sandbox
-# Copyright © 2006-2019 Giuseppe Maxia
+# Copyright © 2006-2020 Giuseppe Maxia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,9 @@ function check_exit_code {
 
 }
 
-for dir in abbreviations cmd common sandbox cookbook concurrent rest
+test_dirs=$(find . -name '*_test.go' -exec dirname {} \; | tr -d './' | sort |uniq)
+
+for dir in $test_dirs
 do
     cd $dir
     echo "# Testing $dir"

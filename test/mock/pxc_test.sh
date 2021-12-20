@@ -1,6 +1,6 @@
 #!/bin/bash
 # DBDeployer - The MySQL Sandbox
-# Copyright © 2006-2018 Giuseppe Maxia
+# Copyright © 2006-2020 Giuseppe Maxia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,16 @@ start_timer
 mkdir -p $mock_dir/home/.dbdeployer
 touch $mock_dir/home/.dbdeployer/sandboxes.json
 
-versions=(pxc5.7)
+# Creates a fake $HOME/bin directory, containing the required executables for PXC
+mkdir $mock_dir/home/bin
+export PATH=$PATH:$mock_dir/home/bin
+dbdeployer defaults templates show no_op_mock > $mock_dir/home/bin/socat
+dbdeployer defaults templates show no_op_mock > $mock_dir/home/bin/rsync
+dbdeployer defaults templates show no_op_mock > $mock_dir/home/bin/lsof
+chmod +x $mock_dir/home/bin/*
+
+
+versions=(pxc5.6 pxc5.7 pxc8.0)
 rev_list="21 99"
 
 for rev in $rev_list
@@ -53,6 +62,18 @@ do
         create_mock_pxc_version $version 
     done
 done
+
+function check_sst_method {
+    dir=$1
+    expected=$2
+
+    my_file=$SANDBOX_HOME/$dir/node1/my.sandbox.cnf
+    ok_file_exists $my_file
+    ok "expected is defined" "$expected"
+
+    found=$(grep "wsrep_sst_method\s*=\s*$expected" $my_file )
+    ok "Expected $expected found in $my_file" "$found"
+}
 
 run dbdeployer available
 for vers in ${versions[*]}
@@ -65,6 +86,16 @@ do
 
         # Check existence 
         test_completeness $version pxc_msb_ multiple
+
+        # Check SST method
+        if [ "$vers" == "pxc8.0" ]
+        then
+            expected=xtrabackup-v2
+        else
+            expected=rsync
+        fi
+        check_sst_method pxc_msb_$version_name $expected
+
         ok_dir_exists "$SANDBOX_HOME/pxc_msb_$version_name"
         results "$version"
     done

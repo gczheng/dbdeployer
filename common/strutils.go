@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,7 +64,19 @@ func ReplaceLiteralHome(path string) string {
 // for example, if "$HOME" resolves to "/home/goofy" the string "/home/goofy/some/path" would become "$HOME/some/path"
 func ReplaceLiteralEnvVar(name string, envVar string) string {
 	value := os.Getenv(envVar)
-	re := regexp.MustCompile(value)
+	// If the environment variable is empty, we return the initial name
+	if value == "" {
+		return name
+	}
+	// If the current location is at the top of the directory tree, we don't want to do any replacement
+	if value == "/" {
+		return name
+	}
+	// If there is already a variable in the name, no further replacement is needed
+	if strings.Contains(name, "$") {
+		return name
+	}
+	re := regexp.MustCompile(`^` + value)
 	return re.ReplaceAllString(name, "$$"+envVar)
 }
 
@@ -72,6 +84,9 @@ func ReplaceLiteralEnvVar(name string, envVar string) string {
 // for example, if "$HOME" resolves to "/home/goofy" the string "$HOME/some/path" would become "/home/goofy/some/path"
 func ReplaceEnvVar(name string, envVar string) string {
 	value := os.Getenv(envVar)
+	if value == "" || value == "/" {
+		return name
+	}
 	re := regexp.MustCompile(`\$` + envVar + `\b`)
 	return re.ReplaceAllString(name, value)
 }
@@ -282,6 +297,11 @@ func RemoveTrailingSlash(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
+func RemoveSuffix(s, suffix string) string {
+	re := regexp.MustCompile(suffix + `$`)
+	return re.ReplaceAllString(s, "")
+}
+
 // ------------------------------------------------------------------------------------
 // The functions below this point are intended only for use with a command line client,
 // and may not be suitable for other client types
@@ -364,4 +384,22 @@ func LatestVersion(searchDir, pattern string) string {
 		return latest
 	}
 	return ""
+}
+
+func OptionComponents(s string) (value string, negation bool) {
+	reNegation := regexp.MustCompile(`^(?:!|no-|not-)(\S+)`)
+	valueList := reNegation.FindAllStringSubmatch(s, -1)
+	if len(valueList) == 0 || len(valueList[0]) == 0 {
+		return s, false
+	}
+	return valueList[0][1], true
+}
+
+func OptionCompare(option, value string) bool {
+	optionValue, negation := OptionComponents(option)
+	matches := optionValue == value
+	if negation {
+		matches = !matches
+	}
+	return matches
 }

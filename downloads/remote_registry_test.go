@@ -1,5 +1,5 @@
 // DBDeployer - The MySQL Sandbox
-// Copyright © 2006-2019 Giuseppe Maxia
+// Copyright © 2006-2020 Giuseppe Maxia
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -137,4 +137,20 @@ func TestFindOrGuessTarballByVersionFlavorOS(t *testing.T) {
 	}
 
 	DefaultTarballRegistry.Tarballs = saveTarballCollection
+}
+
+func TestTarballRegistry(t *testing.T) {
+
+	for _, tarball := range DefaultTarballRegistry.Tarballs {
+		size, err := checkRemoteUrl(tarball.Url)
+		if err != nil {
+			t.Logf("not ok - tarball %s check failed: %s", tarball.Name, err)
+			t.Fail()
+		} else {
+			t.Logf("ok - tarball %s found", tarball.Name)
+			if size == 0 {
+				t.Logf("not ok - size 0 for tarball %s", tarball.Name)
+			}
+		}
+	}
 }
