@@ -17,14 +17,15 @@ package sandbox
 
 import (
 	"fmt"
-	"github.com/datacharmer/dbdeployer/common"
-	"github.com/datacharmer/dbdeployer/compare"
-	"github.com/datacharmer/dbdeployer/defaults"
-	"github.com/datacharmer/dbdeployer/globals"
 	"os"
 	"path"
 	"strings"
 	"testing"
+
+	"github.com/datacharmer/dbdeployer/common"
+	"github.com/datacharmer/dbdeployer/compare"
+	"github.com/datacharmer/dbdeployer/defaults"
+	"github.com/datacharmer/dbdeployer/globals"
 )
 
 func okPortExists(t *testing.T, dirName string, port int) {
@@ -161,52 +162,52 @@ func testDetectFlavor(t *testing.T) {
 	}
 
 	var flavorDetectionSet = []FlavorDetection{
-		FlavorDetection{"5.0.0",
+		{"5.0.0",
 			MySQLMockSet(false),
 			common.MySQLFlavor,
 		},
-		FlavorDetection{"5.5.0",
+		{"5.5.0",
 			MySQLMockSet(true),
 			common.MySQLFlavor,
 		},
-		FlavorDetection{"3.0.0", []MockFileSet{
-			MockFileSet{"bin",
+		{"3.0.0", []MockFileSet{
+			{"bin",
 				[]ScriptDef{
 					{globals.FnTiDbServer, noOpMockTemplateName, true},
 				}},
 		},
 			common.TiDbFlavor,
 		},
-		FlavorDetection{"10.0.0", []MockFileSet{
-			MockFileSet{"bin",
+		{"10.0.0", []MockFileSet{
+			{"bin",
 				[]ScriptDef{
 					{"aria_chk", noOpMockTemplateName, true},
 				}},
 		},
 			common.MariaDbFlavor,
 		},
-		FlavorDetection{"10.3.0", []MockFileSet{
-			MockFileSet{"lib",
+		{"10.3.0", []MockFileSet{
+			{"lib",
 				[]ScriptDef{
 					{globals.FnLibMariadbClientA, noOpMockTemplateName, false},
 				}},
 		},
 			common.MariaDbFlavor,
 		},
-		FlavorDetection{"8.0.14", []MockFileSet{
-			MockFileSet{"lib",
+		{"8.0.14", []MockFileSet{
+			{"lib",
 				[]ScriptDef{
 					{globals.FnLibPerconaServerClientA, noOpMockTemplateName, false},
 				}},
 		},
 			common.PerconaServerFlavor,
 		},
-		FlavorDetection{"8.0.12", []MockFileSet{
-			MockFileSet{"bin",
+		{"8.0.12", []MockFileSet{
+			{"bin",
 				[]ScriptDef{
 					{globals.FnGarbd, noOpMockTemplateName, true},
 				}},
-			MockFileSet{"lib",
+			{"lib",
 				[]ScriptDef{
 					{globals.FnLibPerconaServerClientSo, noOpMockTemplateName, false},
 					{globals.FnLibGaleraSmmSo, noOpMockTemplateName, false},
@@ -214,12 +215,12 @@ func testDetectFlavor(t *testing.T) {
 		},
 			common.PxcFlavor,
 		},
-		FlavorDetection{"5.7.77", []MockFileSet{
-			MockFileSet{"bin",
+		{"5.7.77", []MockFileSet{
+			{"bin",
 				[]ScriptDef{
 					{globals.FnGarbd, noOpMockTemplateName, true},
 				}},
-			MockFileSet{"lib",
+			{"lib",
 				[]ScriptDef{
 					{globals.FnLibPerconaServerClientA, noOpMockTemplateName, false},
 					{globals.FnLibGaleraSmmA, noOpMockTemplateName, false},
@@ -227,15 +228,15 @@ func testDetectFlavor(t *testing.T) {
 		},
 			common.PxcFlavor,
 		},
-		FlavorDetection{"6.7.8", []MockFileSet{
-			MockFileSet{"bin",
+		{"6.7.8", []MockFileSet{
+			{"bin",
 				[]ScriptDef{
 					{globals.FnNdbdMgm, noOpMockTemplateName, true},
 					{globals.FnNdbdMgmd, noOpMockTemplateName, true},
 					{globals.FnNdbd, noOpMockTemplateName, true},
 					{globals.FnNdbdMtd, noOpMockTemplateName, true},
 				}},
-			MockFileSet{"lib",
+			{"lib",
 				[]ScriptDef{
 					{globals.FnLibMySQLClientA, noOpMockTemplateName, false},
 					{globals.FnNdbdEngineSo, noOpMockTemplateName, false},
@@ -324,11 +325,11 @@ func testCreateTidbMockSandbox(t *testing.T) {
 
 		_, err = RemoveCustomSandbox(mockSandboxHome, sandboxDef.DirName, false, true)
 		if err != nil {
-			t.Fatal(fmt.Sprintf(globals.ErrWhileRemoving, sandboxDir, err))
+			t.Fatalf(globals.ErrWhileRemoving, sandboxDir, err)
 		}
 		err = defaults.DeleteFromCatalog(sandboxDir)
 		if err != nil {
-			t.Fatal(fmt.Sprintf(globals.ErrRemovingFromCatalog, sandboxDir))
+			t.Fatalf(globals.ErrRemovingFromCatalog, sandboxDir)
 		}
 
 	}
@@ -546,7 +547,7 @@ func testCreateStandaloneSandbox(t *testing.T) {
 
 	err = CreateStandaloneSandbox(sandboxDef)
 	if err != nil {
-		t.Fatal(fmt.Sprintf(globals.ErrCreatingSandbox, err))
+		t.Fatalf(globals.ErrCreatingSandbox, err)
 	}
 
 	sandboxDir := path.Join(sandboxDef.SandboxDir, defaults.Defaults().SandboxPrefix+pathVersion)
@@ -559,11 +560,11 @@ func testCreateStandaloneSandbox(t *testing.T) {
 	okPortExists(t, sandboxDir, sandboxDef.Port)
 	_, err = RemoveCustomSandbox(defaults.Defaults().SandboxHome, sandboxDef.DirName, false, false)
 	if err != nil {
-		t.Fatal(fmt.Sprint(globals.ErrWhileRemoving, sandboxDef.SandboxDir, err))
+		t.Fatalf(globals.ErrWhileRemoving, sandboxDef.SandboxDir, err)
 	}
 	err = defaults.DeleteFromCatalog(sandboxDir)
 	if err != nil {
-		t.Fatal(fmt.Sprintf(globals.ErrRemovingFromCatalog, sandboxDef.SandboxDir))
+		t.Fatalf(globals.ErrRemovingFromCatalog, sandboxDef.SandboxDir)
 	}
 }
 
@@ -622,7 +623,7 @@ func testCreateReplicationSandbox(t *testing.T) {
 	err := CreateReplicationSandbox(sandboxDef, latestVersion, ReplicationData{
 		Topology: globals.MasterSlaveLabel, Nodes: 3, MasterIp: "127.0.0.1", MasterList: "1", SlaveList: "2,3"})
 	if err != nil {
-		t.Fatal(fmt.Sprintf(globals.ErrCreatingSandbox, err))
+		t.Fatalf(globals.ErrCreatingSandbox, err)
 	}
 
 	sandboxDir := path.Join(sandboxDef.SandboxDir, defaults.Defaults().MasterSlavePrefix+pathVersion)
@@ -645,12 +646,12 @@ func testCreateReplicationSandbox(t *testing.T) {
 	}
 	_, err = RemoveCustomSandbox(defaults.Defaults().SandboxHome, sandboxDef.DirName, false, false)
 	if err != nil {
-		t.Fatal(fmt.Sprint(globals.ErrWhileRemoving, sandboxDef.SandboxDir, err))
+		t.Fatalf(globals.ErrWhileRemoving, sandboxDef.SandboxDir, err)
 	}
 	t.Logf("sandbox to delete: %s\n", sandboxDef.SandboxDir)
 	err = defaults.DeleteFromCatalog(sandboxDir)
 	if err != nil {
-		t.Fatal(fmt.Sprintf(globals.ErrRemovingFromCatalog, sandboxDef.SandboxDir))
+		t.Fatalf(globals.ErrRemovingFromCatalog, sandboxDef.SandboxDir)
 	}
 }
 

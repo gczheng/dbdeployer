@@ -1,11 +1,157 @@
-## 1.64.0	27-Nov-2021
+## 1.73.0	09-Jul-2023
 
 ## NEW FEATURES
+
+* Add tarballs for MySQL 8.0.33 to downloads list
+
+## ADJUSTMENTS
+* Fix security vulnerabilities in dependency (golang.org/x/text and golang.org/x/term)
+
+## 1.72.1	24-Feb-2023
+
+## ADJUSTMENTS
+* Fix security vulnerability in dependency (golang.org/x/text)
+
+## 1.72.0	22-Jan-2023
+
+## ADJUSTMENTS
+
+* Update user-agents used in `downloads add-remote` to fix failed recognition by MySQL.com downloads servers.
+  The new user agent identifies the request as coming from `dbdeployer`, instead of pretending to be a browser.
+
+## NEW FEATURES
+
+* Add option `--change-user-agent` for command `downloads add-remote` to use alternative user agent in case of failure.
+  If used, this option changes the user agent so that the request comes from  a fake Firefox browser with a very high
+  version number (i.e. the current year).
+* Add tarballs for MySQL 8.0.32 to downloads list
+
+## 1.71.0	11-Dec-2022
+
+## ADJUSTMENTS
+
+* Update code of `show_binlog` script to find the right binary log
+  with version 8.0.x, when used without `--master` outside replication.
+
+
+## 1.70.0	31-Oct-2022
+
+## NEW FEATURES
+
+* Add downloads for MySQL 8.0.31 and Percona Server 8.0.27, 8.0.28, 8.0.29
+* Add option `--merge-imported` to `dbdeployer downloads import`
+
+### Code improvements
+
+* Fix `gosec` complaints in tests
+
+## 1.69.3	07-Oct-2022
+
+### BUGS FIXED
+
+* Fix Issue #156 : unquoted directory names in shell scripts cause failure
+
+## 1.69.2	04-Sep-2022
+
+### BUGS FIXED
+
+* Fix error in data-load: getting 'menagerie' database into a replicated sandbox 
+  requires all nodes to set `local_infile=ON`
+
+## 1.69.1	04-Sep-2022
+
+### BUGS FIXED
+
+* Fix error in cleanup procedure for composite sandbox
+  (The  cleanup was not able to delete a non-empty directory)
+
+### Code improvements
+
+* Add testing command `check_sandbox_manifest`.
+* Improve TestMain with a check that prevents double buildUp or early tearDown
+
+## 1.69.0	27-Aug-2022
+
+## NEW FEATURES
+
+* Add downloads for arm64 (Issue #145)
+* Add option `--arch` to  `downloads` commands: `get-by-version`, `add` (mandatory), `list`, `tree`
+* Released binaries for MacOS are now universal (`ARM64` and `X86_64`)
+
+## 1.68.0	12-Aug-2022
+
+### NEW FEATURES
+
+* Add option `--retries-on-failure` to downloads `get*` and `import` commands
+* Add file `connection_super_user.conf` and `connection_super_user.json` to each sandbox
+
+## 1.67.0	10-Aug-2022
+
+### Code improvements
+
+* Reformat code using go 1.19 (some tiny differences are found within comments)
+* Remove deprecated usage of `io/ioutil` (replaced with either `os` or `io`)
+* Add testscript tests (`ts` and `ts_static`)
+
+### ADJUSTMENTS
+
+* Remove from downloads list all 8.0.29 tarballs, after they were removed from MySQL downloads archives.
+
+## 1.66.0	27-Jul-2022
+
+### NEW FEATURES
+
+* Add unpack capability to `downloads get` and `downloads get-by-version`.
+  These commands can use all the options allowed to `get-unpack`.
+* Add downloads for MySQL 8.0.29 minimal (was skipped in 1.65.0).
+* Add downloads for MySQL 8.0.30.
+
+### Code improvements
+    Isolate functions for several commands
+
+    These changes move the main functionality from the cmd package
+    (using cobra.Command and args) to the ops package (using a structure)
+
+    This change makes it easier to test, and to use dbdeployer as a library from other
+    packages.
+
+## 1.65.2	30-Jun-2022
+
+### BUGS FIXED
+
+* Fix issue #148: incorrect default value listed for option `--OS`
+* Fix isste #149: port calculation exceeds 64K
+
+## 1.65.1	23-Jun-2022
+
+### BUGS FIXED
+
+* Fix issue #147: `sysbench_ready run` does not use env variable
+
+## 1.65.0	21-Jun-2022
+
+### NEW FEATURES
+
+* Add downloads for MySQL 8.0.28 and 8.0.29 (PR #146 bt @isotopp)
+
+### BUGS FIXED
+
+* Fix JSON label missing quote in `data_load.go`
+
+### Code improvements
+
+* Improve comments and tests for `regexp_util`
+* Skip `gosecure` warnings in in ternally used functions.
+* Improve testing code using `t.Fatal` and `t.Skip`
+
+## 1.64.0	27-Nov-2021
+
+### NEW FEATURES
 
 * Add downloads for MySQL 8.0.27
 * Add downloads for MySQL 8.0.23 (Issue #144)
 
-## ADJUSTMENTS
+### ADJUSTMENTS
 
 * Removed CRC from sample databases provided by MySQL.com: the CRC are not reliable, as they change often.
 

@@ -5,12 +5,21 @@ source {{.SandboxDir}}/sb_include
 export LD_LIBRARY_PATH=$CLIENT_LD_LIBRARY_PATH
 
 curdir=$SBDIR
-cd $curdir
+cd "$curdir"
 
 if [ ! -d ./data ]
 then
     echo "$curdir/data not found"
     exit 1
+fi
+
+base='mysql-bin'
+if [  "$MYSQL_VERSION_MAJOR" == "8" ]
+then
+    if [ -f ./data/binlog.index ]
+    then
+        base="binlog"
+    fi
 fi
 
 pattern=$1
@@ -19,7 +28,7 @@ function get_help {
     exit_code=$1
     [ -z "$exit_code" ] && exit_code=0
     echo "# Usage: $0 [BINLOG_PATTERN] "
-    echo "# Where BINLOG_PATTERN is a number, or part of a number used after 'mysql-bin'"
+    echo "# Where BINLOG_PATTERN is a number, or part of a number used after '${base}'"
     echo "# (The default is '[0-9]*]')"
     echo "# examples:"
     echo "#          ./show_binlog 000001 | less "
@@ -33,7 +42,7 @@ then
     get_help 0
 fi
 # set -x
-last_binlog=$(ls -lotr data/mysql-bin.$pattern | tail -n 1 | awk '{print $NF}')
+last_binlog=$(ls -lotr data/${base}.${pattern} | tail -n 1 | awk '{print $NF}')
 
 if [ -z "$last_binlog" ]
 then

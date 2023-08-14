@@ -5,7 +5,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,7 @@ package downloads
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -30,12 +31,15 @@ import (
 	"github.com/datacharmer/dbdeployer/common"
 	"github.com/datacharmer/dbdeployer/defaults"
 	"github.com/datacharmer/dbdeployer/globals"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type TarballDescription struct {
 	Name            string `json:"name"`
 	Checksum        string `json:"checksum,omitempty"`
 	OperatingSystem string `json:"OS"`
+	Arch            string `json:"arch"`
 	Url             string `json:"url"`
 	Flavor          string `json:"flavor"`
 	Minimal         bool   `json:"minimal"`
@@ -165,10 +169,10 @@ func FindTarballByName(tarballName string) (TarballDescription, error) {
 	}
 	return TarballDescription{}, fmt.Errorf("tarball with name %s not found", tarballName)
 }
-func DeleteTarball(tarballName string) ([]TarballDescription, error) {
+func DeleteTarball(tarballs []TarballDescription, tarballName string) ([]TarballDescription, error) {
 	var newList []TarballDescription
 	found := false
-	for _, tb := range DefaultTarballRegistry.Tarballs {
+	for _, tb := range tarballs {
 		if tb.Name == tarballName {
 			found = true
 		} else {
@@ -212,15 +216,19 @@ func CompareTarballChecksum(tarball TarballDescription, fileName string) error {
 	return nil
 }
 
-func FindTarballByVersionFlavorOS(version, flavor, OS string, minimal, newest bool) (TarballDescription, error) {
-	return FindOrGuessTarballByVersionFlavorOS(version, flavor, OS, minimal, newest, false)
+func FindTarballByVersionFlavorOS(version, flavor, OS, arch string, minimal, newest bool) (TarballDescription, error) {
+	return FindOrGuessTarballByVersionFlavorOS(version, flavor, OS, arch, minimal, newest, false)
 }
 
-func FindOrGuessTarballByVersionFlavorOS(version, flavor, OS string, minimal, newest, guess bool) (TarballDescription, error) {
+func FindOrGuessTarballByVersionFlavorOS(version, flavor, OS, arch string, minimal, newest, guess bool) (TarballDescription, error) {
 	flavor = strings.ToLower(flavor)
 	OS = strings.ToLower(OS)
+	arch = strings.ToLower(arch)
 	if OS == "osx" || OS == "macos" || OS == "os x" {
 		OS = "darwin"
+	}
+	if arch == "x86_64" || arch == "x86-64" {
+		arch = "amd64"
 	}
 	if guess {
 		minimal = false
@@ -228,9 +236,14 @@ func FindOrGuessTarballByVersionFlavorOS(version, flavor, OS string, minimal, ne
 	var tbd []TarballDescription
 	newestVersionList := []int{0, 0, 0}
 	for _, tb := range DefaultTarballRegistry.Tarballs {
+		archMatch := true
+		if tb.Arch != "" {
+			archMatch = strings.ToLower(tb.Arch) == arch
+		}
 		if (tb.Version == version || tb.ShortVersion == version) &&
 			strings.ToLower(tb.Flavor) == flavor &&
 			strings.ToLower(tb.OperatingSystem) == OS &&
+			archMatch &&
 			(!minimal || minimal == tb.Minimal) {
 
 			if guess {
@@ -419,6 +432,29 @@ func WriteTarballFileInfo(collection TarballCollection) error {
 	return common.WriteString(string(text), TarballFileRegistry)
 }
 
+func MergeTarballCollection(oldest, newest TarballCollection) (TarballCollection, error) {
+	if len(oldest.Tarballs) == 0 {
+		return TarballCollection{}, fmt.Errorf("[MergeCollection] empty origin collection")
+	}
+	if len(newest.Tarballs) == 0 {
+		return TarballCollection{}, fmt.Errorf("[MergeCollection] empty additional collection")
+	}
+	newCollection := oldest
+	newCollection.DbdeployerVersion = common.VersionDef
+	seenItems := make(map[string]bool)
+	for _, oldItem := range oldest.Tarballs {
+		seenItems[oldItem.Name] = true
+	}
+	for _, newItem := range newest.Tarballs {
+		_, seen := seenItems[newItem.Name]
+		if !seen {
+			newCollection.Tarballs = append(newCollection.Tarballs, newItem)
+			seenItems[newItem.Name] = true
+		}
+	}
+	return newCollection, nil
+}
+
 func TarballFileInfoValidation(collection TarballCollection) error {
 	type tarballError struct {
 		Name  string
@@ -426,10 +462,15 @@ func TarballFileInfoValidation(collection TarballCollection) error {
 	}
 	var tarballErrorList []tarballError
 
+	var seenTarballs = make(map[string]bool)
 	if collection.DbdeployerVersion == "" {
 		tarballErrorList = append(tarballErrorList, tarballError{"collection version", "dbdeployer version not set"})
 	}
 	for _, tb := range collection.Tarballs {
+		_, seen := seenTarballs[tb.Name]
+		if seen {
+			return fmt.Errorf("tarball '%s' listed more than once", tb.Name)
+		}
 		if tb.Name == "" {
 			tarballErrorList = append(tarballErrorList, tarballError{"No Name", "name is missing"})
 		}
@@ -486,7 +527,9 @@ func GetTarballInfo(fileName string, description TarballDescription) (TarballDes
 		description.Flavor = flavor
 	}
 	if description.OperatingSystem == "" {
-		description.OperatingSystem = strings.Title(runtime.GOOS)
+		op := cases.Title(language.Und)
+		//description.OperatingSystem = strings.Title(runtime.GOOS)
+		description.OperatingSystem = op.String(runtime.GOOS)
 	}
 	description.Name = common.BaseName(fileName)
 
@@ -499,7 +542,12 @@ func checkRemoteUrl(remoteUrl string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("[checkRemoteUrl] error getting %s: %s", remoteUrl, err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			fmt.Printf("[checkRemoteUrl] error closing response body: %s", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("[checkRemoteUrl] received code %d ", resp.StatusCode)
@@ -517,7 +565,7 @@ func CheckTarballList(tarballList []TarballDescription) error {
 	uniqueNames := make(map[string]bool)
 	uniqueCombinations := make(map[string]bool)
 	for _, tb := range tarballList {
-		key := fmt.Sprintf("%s-%s-%s-%v", tb.OperatingSystem, tb.Flavor, tb.Version, tb.Minimal)
+		key := fmt.Sprintf("%s-%s-%s-%s-%v", tb.OperatingSystem, tb.Arch, tb.Flavor, tb.Version, tb.Minimal)
 
 		// Makes sure that we don't have duplicate names in the list
 		_, seen := uniqueNames[tb.Name]
@@ -526,11 +574,11 @@ func CheckTarballList(tarballList []TarballDescription) error {
 		}
 		uniqueNames[tb.Name] = true
 
-		// Makes sure that we don't have duplicate combinations of OS+Flavor+Version+Minimal in the list
+		// Makes sure that we don't have duplicate combinations of OS+arch+Flavor+Version+Minimal in the list
 		_, seen = uniqueCombinations[key]
 		if seen {
-			return fmt.Errorf("tarball with OS %s, flavor %s, version %s, and minimal %v listed more than once",
-				tb.OperatingSystem, tb.Flavor, tb.Version, tb.Minimal)
+			return fmt.Errorf("tarball with OS %s-%s, flavor %s, version %s, and minimal %v listed more than once",
+				tb.OperatingSystem, tb.Arch, tb.Flavor, tb.Version, tb.Minimal)
 		}
 		uniqueCombinations[key] = true
 	}

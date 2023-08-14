@@ -1,0 +1,54 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME={{.Home}}
+env TMPDIR={{.TmpDir}}
+env db_version={{.DbVersion}}
+env sb_dir=$HOME/sandboxes/msb_{{.DbPathVer}}_admin
+env db_port={{.DbIncreasedPort}}
+
+! exists $sb_dir
+
+# deployment
+
+env db_dir=--sandbox-directory=msb_{{.DbPathVer}}_admin
+exec dbdeployer deploy single $db_version --enable-admin-address $db_dir --port=$db_port
+stdout 'Database installed in .*/sandboxes/msb_{{.DbPathVer}}_admin'
+stdout 'sandbox server started'
+! stderr .
+exists $sb_dir
+
+cleanup_at_end $sb_dir
+
+# check files and ports
+
+check_sandbox_manifest $sb_dir single
+check_exec $sb_dir use_admin
+
+env required_ports=3
+check_ports $sb_dir $required_ports
+
+exec $sb_dir/test_sb
+stdout '# fail  :     0'
+! stderr .
+
+! find_errors $sb_dir
+
+# use admin port
+
+stdin select-user.txt
+exec $sb_dir/use_admin
+stdout 'root'
+
+stdin select-admin-port.txt
+exec $sb_dir/use_admin
+stdout '\b\d+\b'
+
+# sandbox cleanup
+exec dbdeployer delete msb_{{.DbPathVer}}_admin
+stdout 'sandboxes/msb_{{.DbPathVer}}_admin'
+! stderr .
+! exists $sb_dir
+
+-- select-admin-port.txt --
+select @@admin_port
+-- select-user.txt --
+select USER()

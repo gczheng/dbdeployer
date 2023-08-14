@@ -1,0 +1,157 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME={{.Home}}
+env TMPDIR={{.TmpDir}}
+env sb_dir=$HOME/sandboxes/rsandbox_{{.DbPathVer}}_gtid
+
+! exists $sb_dir
+
+# deployment
+
+exec dbdeployer deploy replication --concurrent --gtid {{.DbVersion}} --base-port=18500 --sandbox-directory=rsandbox_{{.DbPathVer}}_gtid
+stdout 'Replication directory installed in .*/sandboxes/rsandbox_{{.DbPathVer}}_gtid'
+stdout 'initializing slave 1'
+stdout 'initializing slave 2'
+! stderr .
+
+exists $sb_dir
+
+cleanup_at_end $sb_dir
+
+# check files and ports
+
+check_sandbox_manifest $sb_dir replication
+
+env required_ports=3
+[version_is_at_least:$db_version:8.0.0] env required_ports=6
+check_ports $sb_dir $required_ports
+
+# test replication
+
+exec $sb_dir/test_replication
+stdout '# failed:     0'
+! stderr .
+
+! find_errors $sb_dir/master
+! find_errors $sb_dir/node1
+! find_errors $sb_dir/node2
+
+# test GTID
+
+exec $sb_dir/check_slaves
+stdout -count=3 'Executed_Gtid_Set: [0-9]{8}-1111-1111-1111-111111111111'
+stdout -count=2 'Retrieved_Gtid_Set: [0-9]{8}-1111-1111-1111-111111111111'
+
+# Test restart sandbox
+
+exec $sb_dir/restart_all --max-connections=66
+stdout 'stop .*/rsandbox_{{.DbPathVer}}_gtid'
+stdout -count=3 'sandbox server started'
+! stderr .
+
+exec $sb_dir/use_all 'select @@max_connections'
+stdout -count=3 66
+
+run_sql_in_sandbox $sb_dir/master 'select @@max_connections' eq 66
+run_sql_in_sandbox $sb_dir/node1 'select @@max_connections' eq 66
+run_sql_in_sandbox $sb_dir/node2 'select @@max_connections' eq 66
+[version_is_at_least:$db_version:5.6.0] ! find_errors $sb_dir/master
+[version_is_at_least:$db_version:5.6.0] ! find_errors $sb_dir/node1
+[version_is_at_least:$db_version:5.6.0] ! find_errors $sb_dir/node2
+
+
+# test use_* commands
+
+exec $sb_dir/use_all 'select @@server_id'
+stdout -count=3 '^[0-9]+$'
+exec $sb_dir/use_all_masters 'select @@server_id'
+stdout -count=1 '^[0-9]+$'
+exec $sb_dir/use_all_slaves 'select @@server_id'
+stdout -count=2 '^[0-9]+$'
+
+
+# load data list
+
+exec dbdeployer data-load list
+stdout 'employees\s+36 MB employee data'
+stdout 'menagerie\s+2.0 kB menagerie database'
+stdout 'world\s+93 kB world database'
+stdout 'worldx\s+99 kB world_X database'
+stdout 'sakila\s+732 kB Sakila database'
+
+# load data world
+
+exec dbdeployer data-load get world rsandbox_{{.DbPathVer}}_gtid
+stdout 'downloading https://.*/world-db.tar.gz'
+stdout 'Unpacking .*/sandboxes/rsandbox_{{.DbPathVer}}_gtid/world-db.tar.gz'
+stdout 'Running .*/sandboxes/rsandbox_{{.DbPathVer}}_gtid/load_db.sh'
+
+# load data worldx
+
+exec dbdeployer data-load get worldx rsandbox_{{.DbPathVer}}_gtid
+stdout 'downloading https://.*/world_x-db.tar.gz'
+stdout 'Unpacking .*/sandboxes/rsandbox_{{.DbPathVer}}_gtid/world_x-db.tar.gz'
+stdout 'Running .*/sandboxes/rsandbox_{{.DbPathVer}}_gtid/load_db.sh'
+
+# load data sakila
+
+exec dbdeployer data-load get sakila rsandbox_{{.DbPathVer}}_gtid
+stdout 'downloading https://.*/sakila-db.tar.gz'
+stdout 'Unpacking .*/sandboxes/rsandbox_{{.DbPathVer}}_gtid/sakila-db.tar.gz'
+stdout 'Running .*/sandboxes/rsandbox_{{.DbPathVer}}_gtid/load_db.sh'
+
+# load data check schemas
+
+exec $sb_dir/m -e 'show schemas'
+stdout 'world\b'
+stdout 'world_x'
+stdout 'sakila'
+
+exec $sb_dir/s1 -e 'show schemas'
+stdout 'world\b'
+stdout 'world_x'
+stdout 'sakila'
+
+# load data check tables
+
+exec $sb_dir/m -e 'show tables from world'
+stdout 'city'
+stdout 'country'
+stdout 'countrylanguage'
+
+exec $sb_dir/s1 -e 'show tables from world'
+stdout 'city'
+stdout 'country'
+stdout 'countrylanguage'
+
+exec $sb_dir/m -e 'show tables from world_x'
+stdout 'city'
+stdout 'country'
+stdout 'countryinfo'
+stdout 'countrylanguage'
+
+exec $sb_dir/s1 -e 'show tables from world_x'
+stdout 'city'
+stdout 'country'
+stdout 'countryinfo'
+stdout 'countrylanguage'
+
+exec $sb_dir/m -e 'show tables from sakila'
+stdout 'actor'
+stdout 'actor_info'
+stdout 'address'
+stdout 'category'
+stdout 'city'
+
+exec $sb_dir/s1 -e 'show tables from sakila'
+stdout 'actor'
+stdout 'actor_info'
+stdout 'address'
+stdout 'category'
+stdout 'city'
+
+# sandbox cleanup
+
+exec dbdeployer delete rsandbox_{{.DbPathVer}}_gtid
+stdout 'sandboxes/rsandbox_{{.DbPathVer}}_gtid'
+! stderr .
+! exists $sb_dir

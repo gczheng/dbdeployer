@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -202,7 +201,7 @@ func SlurpAsLines(filename string) ([]string, error) {
 	if err != nil {
 		return globals.EmptyStrings, errors.Wrapf(err, "error opening file %s", filename)
 	}
-	defer f.Close()
+	defer f.Close() // #nosec G307
 
 	var lines []string
 	scanner := bufio.NewScanner(f)
@@ -228,7 +227,7 @@ func SlurpAsString(filename string) (string, error) {
 // reads a file and returns its contents as a byte slice
 func SlurpAsBytes(filename string) ([]byte, error) {
 	// #nosec G304
-	b, err := ioutil.ReadFile(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		return globals.EmptyBytes, errors.Wrapf(err, "error reading from file %s", filename)
 	}
@@ -238,11 +237,11 @@ func SlurpAsBytes(filename string) ([]byte, error) {
 // Writes a string slice into a file
 // The file is created
 func WriteStrings(lines []string, filename string, termination string) error {
-	file, err := os.Create(filename)
+	file, err := os.Create(filename) // #nosec G304
 	if err != nil {
 		return errors.Wrapf(err, "error creating file %s", filename)
 	}
-	defer file.Close()
+	defer file.Close() // #nosec G307
 
 	w := bufio.NewWriter(file)
 	for _, line := range lines {
@@ -281,7 +280,7 @@ func GetFileChecksum(fileName, crcType string) (string, error) {
 	if err != nil {
 		return globals.EmptyString, err
 	}
-	defer f.Close()
+	defer f.Close() // #nosec G307
 	_, err = io.Copy(hasher, f)
 	if err != nil {
 		return globals.EmptyString, err
@@ -307,12 +306,11 @@ func GetFileMd5(fileName string) (string, error) {
 
 // append a string slice into an existing file
 func AppendStrings(lines []string, filename string, termination string) error {
-	// file, err := os.Open(filename) // #nosec G304
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, os.ModeAppend) // #nosec G304
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer file.Close() // #nosec G307
 
 	w := bufio.NewWriter(file)
 	for _, line := range lines {
@@ -541,8 +539,8 @@ func runCmdCtrlArgs(c string, silent bool, args ...string) (string, string, erro
 		return "", "", err
 	}
 
-	slurpErr, _ := ioutil.ReadAll(stderr)
-	slurpOut, _ := ioutil.ReadAll(stdout)
+	slurpErr, _ := io.ReadAll(stderr)
+	slurpOut, _ := io.ReadAll(stdout)
 	err = cmd.Wait()
 
 	if err != nil {
@@ -583,13 +581,13 @@ func CopyFile(source, destination string) error {
 	if err != nil {
 		return errors.Wrapf(err, "error opening source file %s", source)
 	}
-	defer from.Close()
+	defer from.Close() // #nosec G307
 
-	to, err := os.OpenFile(destination, os.O_RDWR|os.O_CREATE, fileMode) // 0666)
+	to, err := os.OpenFile(destination, os.O_RDWR|os.O_CREATE, fileMode) // #nosec G304
 	if err != nil {
 		return errors.Wrapf(err, "error opening destination file %s", destination)
 	}
-	defer to.Close()
+	defer to.Close() // #nosec G307
 
 	_, err = io.Copy(to, from)
 	if err != nil {
@@ -636,8 +634,27 @@ func Rmdir(dirName string) {
 	ErrCheckExitf(err, 1, "error removing directory %s\n%s\n", dirName, err)
 }
 
-// Removes a directory with its contents, and exits if an error occurs
+// RmDirAll removes a directory with its contents, and exits if an error occurs
+// Checks that the directory does not contain $HOME or $PWD
 func RmdirAll(dirName string) {
-	err := os.RemoveAll(dirName)
+	fullPath, err := AbsolutePath(dirName)
+	if err != nil {
+		Exitf(1, "error determining absolute path of %s", dirName)
+	}
+	fullHomePath, err := AbsolutePath(os.Getenv("HOME"))
+	if err != nil {
+		Exitf(1, "error determining absolute path of $HOME")
+	}
+	fullCurrentPath, err := AbsolutePath(os.Getenv("PWD"))
+	if err != nil {
+		Exitf(1, "error determining absolute path of $PWD")
+	}
+	if strings.HasPrefix(fullHomePath, fullPath) {
+		Exitf(1, "attempt to delete a directory that contains the $HOME directory (%s)", fullHomePath)
+	}
+	if strings.HasPrefix(fullCurrentPath, fullPath) {
+		Exitf(1, "attempt to delete a directory that contains the $PWD directory (%s)", fullCurrentPath)
+	}
+	err = os.RemoveAll(fullPath)
 	ErrCheckExitf(err, 1, "error deep-removing directory %s\n%s\n", dirName, err)
 }

@@ -1,0 +1,52 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME={{.Home}}
+env TMPDIR={{.TmpDir}}
+env db_version={{.DbVersion}}
+env sb_dir=$HOME/sandboxes/msb_{{.DbPathVer}}
+
+! exists $sb_dir
+
+# deployment
+
+exec dbdeployer deploy single $db_version
+stdout 'Database installed in .*/sandboxes/msb_{{.DbPathVer}}'
+stdout 'sandbox server started'
+! stderr .
+exists $sb_dir
+
+cleanup_at_end $sb_dir
+
+# check files and ports
+
+check_sandbox_manifest $sb_dir single
+
+env required_ports=1
+[version_is_at_least:$db_version:8.0.0] env required_ports=2
+check_ports $sb_dir $required_ports
+
+exec $sb_dir/test_sb
+stdout '# fail  :     0'
+! stderr .
+
+! find_errors $sb_dir
+
+# test dbdeployer sandboxes
+
+exec dbdeployer sandboxes
+stdout 'msb_{{.DbPathVer}}.*single'
+! stderr .
+
+# Test restart sandbox
+exec $sb_dir/restart --max-connections=88
+stdout 'stop .*/msb_{{.DbPathVer}}'
+stdout 'sandbox server started'
+! stderr .
+
+run_sql_in_sandbox $sb_dir 'select @@max_connections' eq 88
+! find_errors $sb_dir
+
+# sandbox cleanup
+exec dbdeployer delete msb_{{.DbPathVer}}
+stdout 'sandboxes/msb_{{.DbPathVer}}'
+! stderr .
+! exists $sb_dir

@@ -5,7 +5,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -131,15 +131,20 @@ const (
 
 	// Instantiated in cmd/downloads.go
 	OSLabel                = "OS"
+	ArchLabel              = "arch"
 	ShowUrlLabel           = "show-url"
 	UrlLabel               = "url"
 	QuietLabel             = "quiet"
+	UnpackLabel            = "unpack"
 	GuessLatestLabel       = "guess-latest"
+	RetriesOnFailureLabel  = "retries-on-failure"
+	MergeImportedLabel     = "merge-imported"
 	MinimalLabel           = "minimal"
 	NewestLabel            = "newest"
 	AddEmptyItemLabel      = "add-empty-item"
 	DeleteAfterUnpackLabel = "delete-after-unpack"
 	MaxItemsLabel          = "max-items"
+	ChangeUserAgentLabel   = "change-user-agent"
 
 	// Instantiated in cmd/admin.go
 	VerboseLabel = "verbose"
@@ -243,42 +248,44 @@ const (
 	ExportSupportedMysqlVersions = "supported-mysql-versions"
 
 	// Instantiated in sandbox package
-	AutoCnfName              = "auto.cnf"
-	DataDirName              = "data"
-	ScriptAddOption          = "add_option"
-	ScriptClear              = "clear"
-	ScriptGrantsMysql        = "grants.mysql"
-	ScriptInitDb             = "init_db"
-	ScriptAfterStart         = "after_start"
-	ScriptLoadGrants         = "load_grants"
-	ScriptMy                 = "my"
-	ScriptMySandboxCnf       = "my.sandbox.cnf"
-	ScriptMysqlsh            = "mysqlsh"
-	ScriptNoClear            = "no_clear"
-	ScriptPostGrantsSql      = "post_grants.sql"
-	ScriptPreGrantsSql       = "pre_grants.sql"
-	ScriptRestart            = "restart"
-	ScriptSbInclude          = "sb_include"
-	ScriptSendKill           = "send_kill"
-	ScriptShowBinlog         = "show_binlog"
-	ScriptShowLog            = "show_log"
-	ScriptShowRelayLog       = "show_relaylog"
-	ScriptStart              = "start"
-	ScriptStatus             = "status"
-	ScriptStop               = "stop"
-	ScriptTestSb             = "test_sb"
-	ScriptUse                = "use"
-	ScriptUseAdmin           = "use_admin"
-	ScriptConnectionConf     = "connection.conf"
-	ScriptConnectionSql      = "connection.sql"
-	ScriptConnectionJson     = "connection.json"
-	ScriptReplicateFrom      = "replicate_from"
-	ScriptCloneConnectionSql = "clone_connection.sql"
-	ScriptCloneFrom          = "clone_from"
-	ScriptMetadata           = "metadata"
-	ScriptSysbench           = "sysbench"
-	ScriptSysbenchReady      = "sysbench_ready"
-	ScriptWipeAndRestart     = "wipe_and_restart"
+	AutoCnfName               = "auto.cnf"
+	DataDirName               = "data"
+	ScriptAddOption           = "add_option"
+	ScriptClear               = "clear"
+	ScriptGrantsMysql         = "grants.mysql"
+	ScriptInitDb              = "init_db"
+	ScriptAfterStart          = "after_start"
+	ScriptLoadGrants          = "load_grants"
+	ScriptMy                  = "my"
+	ScriptMySandboxCnf        = "my.sandbox.cnf"
+	ScriptMysqlsh             = "mysqlsh"
+	ScriptNoClear             = "no_clear"
+	ScriptPostGrantsSql       = "post_grants.sql"
+	ScriptPreGrantsSql        = "pre_grants.sql"
+	ScriptRestart             = "restart"
+	ScriptSbInclude           = "sb_include"
+	ScriptSendKill            = "send_kill"
+	ScriptShowBinlog          = "show_binlog"
+	ScriptShowLog             = "show_log"
+	ScriptShowRelayLog        = "show_relaylog"
+	ScriptStart               = "start"
+	ScriptStatus              = "status"
+	ScriptStop                = "stop"
+	ScriptTestSb              = "test_sb"
+	ScriptUse                 = "use"
+	ScriptUseAdmin            = "use_admin"
+	ScriptConnectionConf      = "connection.conf"
+	ScriptConnectionSuperConf = "connection_super_user.conf"
+	ScriptConnectionSql       = "connection.sql"
+	ScriptConnectionJson      = "connection.json"
+	ScriptConnectionSuperJson = "connection_super_user.json"
+	ScriptReplicateFrom       = "replicate_from"
+	ScriptCloneConnectionSql  = "clone_connection.sql"
+	ScriptCloneFrom           = "clone_from"
+	ScriptMetadata            = "metadata"
+	ScriptSysbench            = "sysbench"
+	ScriptSysbenchReady       = "sysbench_ready"
+	ScriptWipeAndRestart      = "wipe_and_restart"
 
 	ScriptCheckMsNodes      = "check_ms_nodes"
 	ScriptCheckNodes        = "check_nodes"
@@ -345,7 +352,9 @@ const (
 
 type NumericVersion []int
 
-const MaxAllowedPort int = 64000
+const MaxAllowedPort int = 65535
+const MinAllowedPort int = 1100
+const ReductionOnPortNumberOverflow = 60000
 
 // Go doesn't allow constants to be compound types. Thus we use variables here.
 // Although they can be potentially changed (not that anyone would dare,) they
@@ -370,6 +379,7 @@ const MaxAllowedPort int = 64000
 // MySQLX was enabled by default starting with 8.0.11
 var (
 	MinimumMySQLUpgradeTool                   = NumericVersion{5, 0, 0}
+	MinimumMySQLAutoIncrementIncrement        = NumericVersion{5, 0, 0}
 	MaximumMySQLUpgradeTool                   = NumericVersion{8, 0, 15}
 	MinimumMySQLUpgradeServer                 = NumericVersion{8, 0, 16}
 	MinimumCloneMySQLServer                   = NumericVersion{8, 0, 17}

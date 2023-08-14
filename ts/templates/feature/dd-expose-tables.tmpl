@@ -1,0 +1,47 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME={{.Home}}
+env TMPDIR={{.TmpDir}}
+env db_version={{.DbVersion}}
+env sb_dir=$HOME/sandboxes/msb_{{.DbPathVer}}_dd
+env db_port={{.DbIncreasedPort}}
+
+[!exists_within_seconds:$HOME/opt/mysql/{{.DbVersion}}/bin/mysqld-debug:0] skip 'no mysqld-debug found for version {{.DbVersion}}'
+
+! exists $sb_dir
+
+# deployment
+
+env db_dir=--sandbox-directory=msb_{{.DbPathVer}}_dd
+exec dbdeployer deploy single $db_version --expose-dd-tables --disable-mysqlx $db_dir --port=$db_port
+stdout 'Database installed in .*/sandboxes/msb_{{.DbPathVer}}_dd'
+stdout 'sandbox server started'
+! stderr .
+exists $sb_dir
+
+cleanup_at_end $sb_dir
+
+# check files and ports
+
+check_sandbox_manifest $sb_dir single
+
+env required_ports=1
+check_ports $sb_dir $required_ports
+
+exec $sb_dir/test_sb
+stdout '# fail  :     0'
+! stderr .
+
+! find_errors $sb_dir
+
+# check dictionary tables
+
+run_sql_in_sandbox $sb_dir 'select VERSION()' eq {{.DbVersion}}-debug
+run_sql_in_sandbox $sb_dir 'select @@debug is not null' eq 1
+run_sql_in_sandbox $sb_dir  'select count(*) from mysql.tables where name =''tables'' and schema_id=1' gt 0
+run_sql_in_sandbox $sb_dir 'select count(*) from information_schema.tables where table_name =''tables'' and table_schema=''mysql''' gt 0
+
+# sandbox cleanup
+exec dbdeployer delete msb_{{.DbPathVer}}_dd
+stdout 'sandboxes/msb_{{.DbPathVer}}_dd'
+! stderr .
+! exists $sb_dir

@@ -1,0 +1,75 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME={{.Home}}
+env TMPDIR={{.TmpDir}}
+env sb_dir=$HOME/sandboxes/rsandbox_{{.DbPathVer}}
+
+! exists $sb_dir
+
+# deployment
+
+exec dbdeployer deploy replication --concurrent {{.DbVersion}}
+stdout 'Replication directory installed in .*/sandboxes/rsandbox_{{.DbPathVer}}'
+stdout 'initializing slave 1'
+stdout 'initializing slave 2'
+! stderr .
+
+exists $sb_dir
+
+cleanup_at_end $sb_dir
+
+# check files and ports
+
+check_sandbox_manifest $sb_dir replication
+
+env required_ports=3
+[version_is_at_least:$db_version:8.0.0] env required_ports=6
+check_ports $sb_dir $required_ports
+
+# test replication
+
+exec $HOME/sandboxes/rsandbox_{{.DbPathVer}}/test_replication
+stdout '# failed:     0'
+! stderr .
+
+! find_errors $sb_dir/master
+! find_errors $sb_dir/node1
+! find_errors $sb_dir/node2
+
+# Test restart sandbox
+
+exec $sb_dir/restart_all --max-connections=66
+stdout 'stop .*/rsandbox_{{.DbPathVer}}'
+stdout -count=3 'sandbox server started'
+! stderr .
+
+exec $sb_dir/use_all 'select @@max_connections'
+stdout -count=3 66
+
+run_sql_in_sandbox $sb_dir/master 'select @@max_connections' eq 66
+run_sql_in_sandbox $sb_dir/node1 'select @@max_connections' eq 66
+run_sql_in_sandbox $sb_dir/node2 'select @@max_connections' eq 66
+[version_is_at_least:$db_version:5.6.0] ! find_errors $sb_dir/master
+[version_is_at_least:$db_version:5.6.0] ! find_errors $sb_dir/node1
+[version_is_at_least:$db_version:5.6.0] ! find_errors $sb_dir/node2
+
+# test dbdeployer sandboxes
+
+exec dbdeployer sandboxes
+stdout 'rsandbox_{{.DbPathVer}}.*master-slave'
+! stderr .
+
+# test use_* commands
+
+exec $sb_dir/use_all 'select @@server_id'
+stdout -count=3 '^[0-9]+$'
+exec $sb_dir/use_all_masters 'select @@server_id'
+stdout -count=1 '^[0-9]+$'
+exec $sb_dir/use_all_slaves 'select @@server_id'
+stdout -count=2 '^[0-9]+$'
+
+# sandbox cleanup
+
+exec dbdeployer delete rsandbox_{{.DbPathVer}}
+stdout 'sandboxes/rsandbox_{{.DbPathVer}}'
+! stderr .
+! exists $sb_dir

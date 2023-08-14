@@ -16,6 +16,7 @@
 testdir=$(dirname $0)
 cd $testdir
 cd ..
+
 maindir=$PWD
 
 unset DBDEPLOYER_LOGGING
@@ -36,7 +37,7 @@ for dir in $test_dirs
 do
     cd $dir
     echo "# Testing $dir"
-    go test -v
+    go test -v -timeout 30m
     check_exit_code
     cd $maindir
 done

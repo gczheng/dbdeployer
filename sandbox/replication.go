@@ -95,6 +95,13 @@ func setServerId(sandboxDef SandboxDef, increment int) int {
 	return sandboxDef.BaseServerId + increment
 }
 
+func computeBaseport(proposed int) int {
+	if proposed > globals.MaxAllowedPort {
+		return proposed - globals.ReductionOnPortNumberOverflow
+	}
+	return proposed
+}
+
 func CreateMasterSlaveReplication(sandboxDef SandboxDef, origin string, nodes int, masterIp string) error {
 
 	var execLists []concurrent.ExecutionList
@@ -118,7 +125,7 @@ func CreateMasterSlaveReplication(sandboxDef SandboxDef, origin string, nodes in
 		return err
 	}
 	rev := vList[2]
-	basePort := sandboxDef.Port + defaults.Defaults().MasterSlaveBasePort + (rev * 100)
+	basePort := computeBaseport(sandboxDef.Port + defaults.Defaults().MasterSlaveBasePort + (rev * 100))
 	if sandboxDef.BasePort > 0 {
 		basePort = sandboxDef.BasePort
 	}
@@ -161,7 +168,7 @@ func CreateMasterSlaveReplication(sandboxDef SandboxDef, origin string, nodes in
 	}
 	logger.Printf("Created directory %s\n", sandboxDef.SandboxDir)
 	logger.Printf("Replication Sandbox Definition: %s\n", sandboxDefToJson(sandboxDef))
-	common.AddToCleanupStack(common.Rmdir, "Rmdir", sandboxDef.SandboxDir)
+	common.AddToCleanupStack(common.RmdirAll, "RmdirAll", sandboxDef.SandboxDir)
 	sandboxDef.Port = basePort + 1
 	//sandboxDef.ServerId = (baseServerId + 1) * 100
 	sandboxDef.ServerId = setServerId(sandboxDef, 1)
@@ -464,7 +471,7 @@ func CreateMasterSlaveReplication(sandboxDef SandboxDef, origin string, nodes in
 	return nil
 }
 
-//func CreateReplicationSandbox(sdef SandboxDef, origin string, topology string, nodes int, masterIp, masterList, slaveList string) error {
+// func CreateReplicationSandbox(sdef SandboxDef, origin string, topology string, nodes int, masterIp, masterList, slaveList string) error {
 func CreateReplicationSandbox(sdef SandboxDef, origin string, replData ReplicationData) error {
 	if !common.IsIPV4(replData.MasterIp) {
 		return fmt.Errorf("IP %s is not a valid IPV4", replData.MasterIp)

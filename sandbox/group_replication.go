@@ -125,7 +125,7 @@ func CreateGroupReplication(sandboxDef SandboxDef, origin string, nodes int, mas
 		return err
 	}
 	rev := vList[2]
-	basePort := sandboxDef.Port + defaults.Defaults().GroupReplicationBasePort + (rev * 100)
+	basePort := computeBaseport(sandboxDef.Port + defaults.Defaults().GroupReplicationBasePort + (rev * 100))
 	if sandboxDef.SinglePrimary {
 		basePort = sandboxDef.Port + defaults.Defaults().GroupReplicationSpBasePort + (rev * 100)
 	}
@@ -181,7 +181,7 @@ func CreateGroupReplication(sandboxDef SandboxDef, origin string, nodes int, mas
 	if err != nil {
 		return err
 	}
-	common.AddToCleanupStack(common.Rmdir, "Rmdir", sandboxDef.SandboxDir)
+	common.AddToCleanupStack(common.RmdirAll, "RmdirAll", sandboxDef.SandboxDir)
 	logger.Printf("Creating directory %s\n", sandboxDef.SandboxDir)
 	timestamp := time.Now()
 	slaveLabel := defaults.Defaults().SlavePrefix

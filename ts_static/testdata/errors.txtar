@@ -1,0 +1,63 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME=$WORK/home
+
+# no args
+
+exec dbdeployer
+stdout 'Available Commands:'
+stdout 'admin           sandbox management tasks'
+stdout 'cookbook        Shows dbdeployer samples'
+stdout 'data-load       tasks related to dbdeployer data loading'
+stdout 'defaults        tasks related to dbdeployer defaults'
+stdout 'delete          delete an installed sandbox'
+stdout 'delete-binaries delete an expanded tarball'
+stdout 'deploy          deploy sandboxes'
+stdout 'downloads       Manages remote tarballs'
+stdout 'export          Exports the command structure in JSON format'
+stdout 'global          Runs a given command in every sandbox'
+stdout 'help            Help about any command'
+stdout 'import          imports one or more MySQL servers into a sandbox'
+stdout 'info            Shows information about dbdeployer environment samples'
+stdout 'init            initializes dbdeployer environment'
+stdout 'sandboxes       List installed sandboxes'
+stdout 'unpack          unpack a tarball into the binary directory'
+stdout 'update          Gets dbdeployer newest version'
+stdout 'usage           Shows usage of installed sandboxes'
+stdout 'use             uses a sandbox'
+stdout 'versions        List available versions'
+! stderr .
+
+# downloads
+! exec dbdeployer downloads get
+stderr 'Usage'
+stderr 'dbdeployer downloads get tarball_name'
+stderr 'command .get. requires a remote tarball name'
+! stdout .
+
+# deploy single
+! exec dbdeployer deploy single
+stdout 'this command requires the MySQL version .x.xx..xx.. as argument'
+
+# deploy replication
+! exec dbdeployer deploy replication
+stdout 'this command requires the MySQL version .x.xx..xx.. as argument'
+
+# deploy multiple
+! exec dbdeployer deploy multiple
+stdout 'this command requires the MySQL version .x.xx..xx.. as argument'
+
+# deploy - no valid version
+env dummy_version=9.9.9
+! exec dbdeployer deploy single $dummy_version
+cmpenv stdout no-valid-version.txt
+
+# deploy - no valid version string
+! exec dbdeployer deploy single dummy
+cmp stdout no-valid-version-string.txt
+
+-- home/.dummy --
+-- home/opt/mysql/.dummy --
+-- no-valid-version.txt --
+basedir '$HOME/opt/mysql/$dummy_version' not found
+-- no-valid-version-string.txt --
+can't convert 'dummy' into port number

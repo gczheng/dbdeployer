@@ -5,7 +5,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,6 @@ package unpack
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 
@@ -41,7 +40,7 @@ func MergeShell(tarball, extension, basedir, destination, bareName string, verbo
 	for _, dir := range dirs {
 		destPath := path.Join(destination, dir)
 		if !common.DirExists(destPath) {
-			common.Exitf(1, "destination server directory %s does not exist in %s\n", dir, destination)
+			return fmt.Errorf("destination server directory %s does not exist in %s", dir, destination)
 		}
 		destPath = path.Join(destination, dir, "mysqlsh")
 		if dir != "bin" && common.DirExists(destPath) {
@@ -71,7 +70,7 @@ func MergeShell(tarball, extension, basedir, destination, bareName string, verbo
 		}
 	}
 	bin := path.Join(extracted, "bin")
-	files, err := ioutil.ReadDir(bin)
+	files, err := os.ReadDir(bin)
 	if err != nil {
 		return err
 	}

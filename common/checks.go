@@ -17,7 +17,6 @@ package common
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
@@ -199,16 +198,13 @@ func GetCompatibleClientVersion(basedir, serverVersion string) (string, error) {
 // Returns the list of versions available for deployment
 func GetVersionsFromDir(basedir string) ([]string, error) {
 	var dirs []string
-	files, err := ioutil.ReadDir(basedir)
+	files, err := os.ReadDir(basedir)
 	if err != nil {
 		return dirs, fmt.Errorf("error reading directory %s: %s", basedir, err)
 	}
 	for _, f := range files {
 		fname := f.Name()
-		fmode := f.Mode()
-		//CondPrintf("%#v\n", fmode)
-		if fmode.IsDir() {
-			//fmt.Println(fname)
+		if f.IsDir() {
 			mysqld := path.Join(basedir, fname, "bin", "mysqld")
 			mysqldDebug := path.Join(basedir, fname, "bin", "mysqld-debug")
 			tidb := path.Join(basedir, fname, "bin", "tidb-server")
@@ -301,14 +297,13 @@ func GetInstalledSandboxes(sandboxHome string) (installedSandboxes SandboxInfoLi
 	if !DirExists(sandboxHome) {
 		return installedSandboxes, fmt.Errorf("directory SandboxHome not found")
 	}
-	files, err := ioutil.ReadDir(sandboxHome)
+	files, err := os.ReadDir(sandboxHome)
 	if err != nil {
 		return installedSandboxes, err
 	}
 	for _, f := range files {
 		fname := f.Name()
-		fmode := f.Mode()
-		if fmode.IsDir() {
+		if f.IsDir() {
 			if fname == globals.ForbiddenDirName {
 				continue
 			}
@@ -424,12 +419,14 @@ func DetectBinaryFlavor(basedir string) string {
 	return MySQLFlavor
 }
 
-/* Checks that the extracted tarball directory
-   contains one or more files expected for the current
-   operating system.
-   It prevents simple errors like :
-   * using a Linux tarball on a Mac or vice-versa
-   * using a source or test tarball instead of a binaries one.
+/*
+Checks that the extracted tarball directory
+
+	contains one or more files expected for the current
+	operating system.
+	It prevents simple errors like :
+	* using a Linux tarball on a Mac or vice-versa
+	* using a source or test tarball instead of a binaries one.
 */
 func CheckTarballOperatingSystem(basedir string) error {
 	currentOs := runtime.GOOS
@@ -617,8 +614,10 @@ func VersionToName(version string) string {
 	return name
 }
 
-// Converts a version string into a port number
+// VersionToPort converts a version string into a port number
 // e.g. "5.6.33" -> 5633
+// Note that if the conversion exceeds the maximum port (65,535), such as 10.10.x,
+// the actual number will be reduced by 60,000
 func VersionToPort(version string) (int, error) {
 	verList, err := VersionToList(version)
 	if err != nil {
@@ -627,14 +626,18 @@ func VersionToPort(version string) (int, error) {
 	major := verList[0]
 	minor := verList[1]
 	rev := verList[2]
-	//if major < 0 || minor < 0 || rev < 0 {
-	//	return -1
-	//}
+
 	completeVersion := fmt.Sprintf("%d%d%02d", major, minor, rev)
-	// fmt.Println(completeVersion)
 	i, err := strconv.Atoi(completeVersion)
 	if err != nil {
 		return -1, fmt.Errorf("error converting %d%d%02d to version", major, minor, rev)
+	}
+	for i > globals.MaxAllowedPort {
+		i -= globals.ReductionOnPortNumberOverflow
+	}
+
+	if i < globals.MinAllowedPort {
+		i += globals.MinAllowedPort
 	}
 	return i, nil
 }

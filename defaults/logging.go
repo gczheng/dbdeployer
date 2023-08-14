@@ -5,7 +5,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,7 @@ package defaults
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -33,9 +33,9 @@ type Logger struct {
 
 // Calling Logger.Printf will print what was requested,
 // with an additional prefix made of :
-// 		* dbdeployer Process ID
-// 		* the current operation number
-// 		* the name of the caller function
+//   - dbdeployer Process ID
+//   - the current operation number
+//   - the name of the caller function
 func (l *Logger) Printf(format string, args ...interface{}) {
 	var newArgs []interface{}
 	caller := CallFuncName()
@@ -61,7 +61,7 @@ func getOperationNumber(caller string) string {
 }
 
 func NewLogger(logDir, logFileName string) (*Logger, string, error) {
-	noLogger := &Logger{logger: log.New(ioutil.Discard, "", log.Ldate|log.Ltime)}
+	noLogger := &Logger{logger: log.New(io.Discard, "", log.Ldate|log.Ltime)}
 	if !LogSBOperations {
 		return noLogger, "", nil
 	}
@@ -81,7 +81,7 @@ func NewLogger(logDir, logFileName string) (*Logger, string, error) {
 	var logFileFullName string = path.Join(fullLogDir, logFileName+".log")
 	var err error
 	var logFile *os.File
-	logFile, err = os.OpenFile(logFileFullName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+	logFile, err = os.OpenFile(logFileFullName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600) // #nosec G304
 	if err != nil {
 		return noLogger, "", fmt.Errorf("error opening log file %s : %v", logFileFullName, err)
 	}

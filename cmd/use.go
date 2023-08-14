@@ -17,7 +17,6 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -64,7 +63,7 @@ func useSandbox(cmd *cobra.Command, args []string) error {
 
 	sandboxDir := path.Join(sandboxHome, sandbox)
 	if wantList {
-		files, err := ioutil.ReadDir(sandboxDir)
+		files, err := os.ReadDir(sandboxDir)
 		if err != nil {
 			return err
 		}
@@ -74,10 +73,14 @@ func useSandbox(cmd *cobra.Command, args []string) error {
 			if common.ExecExists(fPath) {
 				perms = "{EXEC}"
 			}
-			if f.Mode().IsDir() {
+			if f.IsDir() {
 				perms = "<DIR>"
 			}
-			fmt.Printf("%-30s %8s %s\n", f.Name(), humanize.Bytes(uint64(f.Size())), perms)
+			info, err := f.Info()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%-30s %8s %s\n", f.Name(), humanize.Bytes(uint64(info.Size())), perms)
 		}
 		return nil
 	}
@@ -87,6 +90,14 @@ func useSandbox(cmd *cobra.Command, args []string) error {
 		if !flags.Changed(globals.RunLabel) {
 			executable = "use"
 		}
+	}
+	skipStartOut := func(s string) bool {
+		alreadyStarted := strings.Contains(s, "already")
+		startScriptIsNoOp := strings.Contains(s, "No start functionality")
+		if alreadyStarted || startScriptIsNoOp {
+			return true
+		}
+		return false
 	}
 	for _, sb := range sandboxList {
 		if sb.SandboxName == sandbox {
@@ -99,15 +110,13 @@ func useSandbox(cmd *cobra.Command, args []string) error {
 			if common.ExecExists(useSingle) {
 				fmt.Printf("%s\n", useSingle)
 				out, _ := common.RunCmdCtrl(startSingle, true)
-				if !strings.Contains(out, "already") {
-					// The server was not already started
+				if !skipStartOut(out) {
 					fmt.Printf("%s\n", out)
 				}
 				return runInteractiveCmd(useSingle)
 			} else if common.ExecExists(useMulti) && !flags.Changed(globals.RunLabel) {
 				out, _ := common.RunCmdCtrl(startMulti, true)
-				if !strings.Contains(out, "already") {
-					// The server was not already started
+				if !skipStartOut(out) {
 					fmt.Printf("%s\n", out)
 				}
 				return runInteractiveCmd(useMulti)

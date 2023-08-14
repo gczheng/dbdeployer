@@ -1,0 +1,47 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME={{.Home}}
+env TMPDIR={{.TmpDir}}
+env sb_dir=$HOME/sandboxes/all_masters_msb_{{.DbPathVer}}
+
+[!minimum_version_for_multi_source:{{.DbVersion}}:{{.DbFlavor}}] skip 'minimum version for multi-source replication not met'
+! exists $sb_dir
+
+exec dbdeployer deploy replication --topology=all-masters --concurrent {{.DbVersion}}
+exists $sb_dir
+exists $sb_dir/node3
+cleanup_at_end $sb_dir
+stdout 'all-masters directory installed in .*/sandboxes/all_masters_msb_{{.DbPathVer}}'
+stdout 'initialize_ms_nodes'
+stdout '# server: 1'
+stdout '# server: 2'
+stdout '# server: 3'
+! stderr .
+
+exists $sb_dir
+[!exists_within_seconds:$sb_dir/node3/data/msandbox.err:10] stop 'the database log for node 3 was not found within 10 seconds'
+
+exec $sb_dir/check_ms_nodes
+stdout '# Master 1'
+stdout '# Master 2'
+stdout '# Master 3'
+stdout -count=6 'Slave_IO_Running: Yes'
+stdout -count=6 'Slave_SQL_Running: Yes'
+! stderr .
+
+check_sandbox_manifest $sb_dir multi_source
+
+env required_ports=3
+[version_is_at_least:$db_version:8.0.0] env required_ports=6
+check_ports $sb_dir $required_ports
+
+exec $HOME/sandboxes/all_masters_msb_{{.DbPathVer}}/test_replication
+stdout '# fail: 0'
+! stderr .
+
+! find_errors $sb_dir/node1
+! find_errors $sb_dir/node2
+! find_errors $sb_dir/node3
+
+exec dbdeployer delete all_masters_msb_{{.DbPathVer}}
+stdout 'sandboxes/all_masters_msb_{{.DbPathVer}}'
+! stderr .

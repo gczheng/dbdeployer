@@ -1,0 +1,50 @@
+[!unix] skip 'this procedure can only work on Unix systems'
+env HOME={{.Home}}
+env TMPDIR={{.TmpDir}}
+env sb_dir=$HOME/sandboxes/multi_msb_{{.DbPathVer}}
+
+! exists $sb_dir
+
+exec dbdeployer deploy multiple --concurrent {{.DbVersion}}
+stdout 'multiple directory installed in .*/sandboxes/multi_msb_{{.DbPathVer}}'
+! stderr .
+
+exists $sb_dir
+cleanup_at_end $sb_dir
+
+check_sandbox_manifest $sb_dir multiple
+
+env required_ports=3
+[version_is_at_least:$db_version:8.0.0] env required_ports=6
+check_ports $sb_dir $required_ports
+
+exec $HOME/sandboxes/multi_msb_{{.DbPathVer}}/test_sb_all
+stdout -count=3 '# fail  :     0'
+! stderr .
+
+! find_errors $sb_dir/node1
+! find_errors $sb_dir/node2
+! find_errors $sb_dir/node3
+
+
+# Test restart sandbox
+exec $sb_dir/restart_all --max-connections=77
+stdout 'stop .*/multi_msb_{{.DbPathVer}}'
+stdout -count=3 'sandbox server started'
+! stderr .
+
+exec $sb_dir/use_all 'select @@max_connections'
+stdout -count=3 77
+
+run_sql_in_sandbox $sb_dir/node1 'select @@max_connections' eq 77
+run_sql_in_sandbox $sb_dir/node2 'select @@max_connections' eq 77
+run_sql_in_sandbox $sb_dir/node3 'select @@max_connections' eq 77
+! find_errors $sb_dir/node1
+! find_errors $sb_dir/node2
+! find_errors $sb_dir/node3
+
+# sandbox cleanup
+exec dbdeployer delete multi_msb_{{.DbPathVer}}
+stdout 'sandboxes/multi_msb_{{.DbPathVer}}'
+! stderr .
+! exists $sb_dir

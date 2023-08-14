@@ -19,9 +19,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
@@ -132,25 +132,46 @@ func (pt *PassThru) Read(p []byte) (int, error) {
 // DownloadFile will download a url to a local file. It's efficient because it will
 // write as it downloads and not load the whole file into memory.
 func DownloadFile(filepath string, url string, progress bool, progressStep int64) error {
+	return DownloadFileWithRetry(filepath, url, progress, progressStep, 0)
+}
+
+// DownloadFileWithRetry will download a url to a local file. It's efficient because it will
+// write as it downloads and not load the whole file into memory.
+func DownloadFileWithRetry(filepath string, url string, progress bool, progressStep, retriesOnFailure int64) error {
 
 	// Get the data
-	// #nosec G107
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("[DownloadFile] error getting %s: %s", url, err)
+	var resp *http.Response
+	var err error
+	var attempts int64 = 1
+	if retriesOnFailure > 10 {
+		retriesOnFailure = 10
 	}
-	defer resp.Body.Close()
+	resp, err = http.Get(url) // #nosec G107
+	for err != nil && attempts < retriesOnFailure {
+		time.Sleep(time.Second)
+		resp, err = http.Get(url) // #nosec G107
+		attempts++
+	}
+	if err != nil {
+		return fmt.Errorf("[DownloadFileWithRetry] error getting %s (attempts: %d): %s", url, attempts, err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			fmt.Printf("[DownloadFileWithRetry] error closing response body: %s", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("[DownloadFile] received code %d ", resp.StatusCode)
+		return fmt.Errorf("[DownloadFileWithRetry] received code %d ", resp.StatusCode)
 	}
 
 	// Create the file
-	out, err := os.Create(filepath)
+	out, err := os.Create(filepath) // #nosec G304
 	if err != nil {
-		return fmt.Errorf("[DownloadFile] error creating file %s", filepath)
+		return fmt.Errorf("[DownloadFileWithRetry] error creating file %s", filepath)
 	}
-	defer out.Close()
+	defer out.Close() // #nosec G307
 
 	progressMark := progressStep * 10
 	if progressStep <= 0 {
@@ -166,7 +187,7 @@ func DownloadFile(filepath string, url string, progress bool, progressStep int64
 	// Write the body to file
 	_, err = io.Copy(out, newBody)
 	if err != nil {
-		return fmt.Errorf("[DownloadFile] error during data writing to file %s: %s", filepath, err)
+		return fmt.Errorf("[DownloadFileWithRetry] error during data writing to file %s: %s", filepath, err)
 	}
 
 	return nil
@@ -207,15 +228,20 @@ func getReleaseText(tag string) ([]byte, error) {
 	// #nosec G107
 	resp, err := http.Get(releaseUrl)
 	if err != nil {
-		return globals.EmptyBytes, fmt.Errorf("[GetReleaseText] error getting %s: %s", releaseUrl, err)
+		return globals.EmptyBytes, fmt.Errorf("[getReleaseText] error getting %s: %s", releaseUrl, err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			fmt.Printf("[getReleaseText] error closing response body: %s", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return globals.EmptyBytes, fmt.Errorf("[GetReleaseText] received code %d ", resp.StatusCode)
+		return globals.EmptyBytes, fmt.Errorf("[getReleaseText] received code %d ", resp.StatusCode)
 	}
 
-	htmlData, err := ioutil.ReadAll(resp.Body)
+	htmlData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return globals.EmptyBytes, err
 	}

@@ -5,7 +5,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,7 @@ package downloads
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -124,7 +125,7 @@ func TestFindOrGuessTarballByVersionFlavorOS(t *testing.T) {
 			tb, _ := FindOrGuessTarballByVersionFlavorOS(
 				data.requestedShortVersion,
 				common.MySQLFlavor,
-				"linux", false, !guess, guess)
+				"linux", "amd64", false, !guess, guess)
 			label := fmt.Sprintf("versions %s - requested '%s' - guess '%v'",
 				data.foundVersions,
 				data.requestedShortVersion,
@@ -152,5 +153,50 @@ func TestTarballRegistry(t *testing.T) {
 				t.Logf("not ok - size 0 for tarball %s", tarball.Name)
 			}
 		}
+	}
+}
+
+func TestMergeCollection(t *testing.T) {
+	type args struct {
+		oldest TarballCollection
+		newest TarballCollection
+	}
+	var (
+		oneItem         = TarballCollection{Tarballs: []TarballDescription{{Name: "one"}}}
+		anotherItem     = TarballCollection{Tarballs: []TarballDescription{{Name: "first"}}}
+		twoItems        = TarballCollection{Tarballs: []TarballDescription{{Name: "one"}, {Name: "two"}}}
+		anotherTwoItems = TarballCollection{Tarballs: []TarballDescription{{Name: "first"}, {Name: "second"}}}
+		threeItems      = TarballCollection{Tarballs: []TarballDescription{{Name: "one"}, {Name: "two"}, {Name: "three"}}}
+
+		twoItemsSameResult      = TarballCollection{DbdeployerVersion: common.VersionDef, Tarballs: []TarballDescription{{Name: "one"}}}
+		twoItemsDifferentResult = TarballCollection{DbdeployerVersion: common.VersionDef, Tarballs: []TarballDescription{{Name: "one"}, {Name: "first"}}}
+		threeItemsResult        = TarballCollection{DbdeployerVersion: common.VersionDef, Tarballs: []TarballDescription{{Name: "one"}, {Name: "two"}, {Name: "three"}}}
+		fiveItemsResult         = TarballCollection{DbdeployerVersion: common.VersionDef, Tarballs: []TarballDescription{{Name: "one"}, {Name: "two"}, {Name: "three"}, {Name: "first"}, {Name: "second"}}}
+	)
+	tests := []struct {
+		name    string
+		args    args
+		want    TarballCollection
+		wantErr bool
+	}{
+		{"both-empty", args{TarballCollection{}, TarballCollection{}}, TarballCollection{}, true},
+		{"origin-empty", args{TarballCollection{}, TarballCollection{}}, TarballCollection{Tarballs: []TarballDescription{{}}}, true},
+		{"additional-empty", args{TarballCollection{Tarballs: []TarballDescription{{}}}, TarballCollection{}}, TarballCollection{}, true},
+		{"one-item-same", args{oneItem, oneItem}, twoItemsSameResult, false},
+		{"one-item-different", args{oneItem, anotherItem}, twoItemsDifferentResult, false},
+		{"two-three-items-common", args{twoItems, threeItems}, threeItemsResult, false},
+		{"two-three-items-different", args{threeItems, anotherTwoItems}, fiveItemsResult, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := MergeTarballCollection(tt.args.oldest, tt.args.newest)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("MergeCollection() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) && err == nil {
+				t.Errorf("MergeCollection() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
